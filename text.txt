@@ -1,1 +1,2 @@
-testing trigger with [skip pipeline]
+testing trigger with [skip pipeline] 
+testing 2

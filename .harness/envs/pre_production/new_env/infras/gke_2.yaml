@@ -1,0 +1,13 @@
+infrastructureDefinition:
+  name: gke2
+  identifier: gke2
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  environmentRef: new_env
+  deploymentType: Kubernetes
+  type: KubernetesDirect
+  spec:
+    connectorRef: testk8s
+    namespace: default
+    releaseName: release-<+INFRA_KEY_SHORT_ID>
+  allowSimultaneousDeployments: false

@@ -17,7 +17,8 @@ template:
         type: Inline
         spec:
           script: |
-            echo "123"
+            echo "test"
+            sleep 5
             echo <+matrix.myfiles.stackFile>
             echo <+matrix.myfiles.ignore>
       environmentVariables: []

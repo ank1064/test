@@ -16,7 +16,10 @@ template:
       source:
         type: Inline
         spec:
-          script: echo "123"
+          script: |
+            echo "123"
+            echo <+matrix.myfiles.stackFile>
+            echo <+matrix.myfiles.ignore>
       environmentVariables: []
       outputVariables: []
     strategy:

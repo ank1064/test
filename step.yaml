@@ -19,3 +19,20 @@ template:
           script: echo "123"
       environmentVariables: []
       outputVariables: []
+    strategy:
+      matrix:
+        myfiles:
+          - stackFile: trustedplatform-servicereviewsubmittedsqs.yaml
+            ignore: "no"
+          - stackFile: trustedplatform-servicereviewsubmittedstream.yaml
+            ignore: "yes"
+          - stackFile: trustedplatform-reviewrelaysqs.yaml
+            ignore: "no"
+          - stackFile: trustedplatform-reviewrelaystream.yaml
+            ignore: "yes"
+          - stackFile: trustedplatform-reviewdeletedsqs.yaml
+            ignore: "no"
+          - stackFile: trustedplatform-reviewdeletedstream.yaml
+            ignore: "yes"
+          - stackFile: trustedplatform-reviewupdatedsqs.yaml
+            ignore: "no"

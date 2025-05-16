@@ -1,0 +1,42 @@
+template:
+  name: test_shell_script
+  identifier: test_shell_script
+  type: Step
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  tags: {}
+  spec:
+    timeout: 10m
+    type: ShellScript
+    spec:
+      shell: Bash
+      executionTarget: {}
+      delegateSelectors: []
+      source:
+        type: Inline
+        spec:
+          script: |
+            echo "test"
+            sleep 10
+            echo <+matrix.myfiles.stackFile>
+            echo <+matrix.myfiles.ignore>
+      environmentVariables: []
+      outputVariables: []
+    strategy:
+      matrix:
+        myfiles:
+          - stackFile: trustedplatform-servicereviewsubmittedsqs.yaml
+            ignore: "no"
+          - stackFile: trustedplatform-servicereviewsubmittedstream.yaml
+            ignore: "yes"
+          - stackFile: trustedplatform-reviewrelaysqs.yaml
+            ignore: "no"
+          - stackFile: trustedplatform-reviewrelaystream.yaml
+            ignore: "yes"
+          - stackFile: trustedplatform-reviewdeletedsqs.yaml
+            ignore: "no"
+          - stackFile: trustedplatform-reviewdeletedstream.yaml
+            ignore: "yes"
+          - stackFile: trustedplatform-reviewupdatedsqs.yaml
+            ignore: "no"
+  versionLabel: v2

@@ -1,0 +1,25 @@
+{
+  "projects": [
+    {
+      "createdBy": "client",
+      "dateCreated": "2025-06-05T12:27:58.773Z",
+      "dateModified": "2025-06-05T12:27:58.773Z",
+      "name": "ADF_Functions",
+      "projectKey": 11968
+    },
+    {
+      "createdBy": "client",
+      "dateCreated": "2025-03-05T12:35:25.005Z",
+      "dateModified": "2025-03-05T12:35:25.005Z",
+      "name": "Analytics_EDH-edhExporter",
+      "projectKey": 11795
+    },
+    {
+      "createdBy": "client",
+      "dateCreated": "2025-03-05T11:53:03.391Z",
+      "dateModified": "2025-03-05T11:53:03.391Z",
+      "name": "Analytics_EDH-enrichmentDal",
+      "projectKey": 11792
+    }
+  ]
+}

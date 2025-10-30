@@ -1,0 +1,22 @@
+{
+  "data": {
+    "all_azure_sub_inventories": [
+      {
+        "id": "sub-001",
+        "name": "Azure Subscription 1"
+      },
+      {
+        "id": "sub-002",
+        "name": "Azure Subscription 2"
+      },
+      {
+        "id": "sub-003",
+        "name": "Azure Subscription 3"
+      },
+      {
+        "id": "sub-004",
+        "name": "Azure Subscription 4"
+      }
+    ]
+  }
+}

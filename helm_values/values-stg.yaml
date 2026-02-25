@@ -1,0 +1,59 @@
+replicaCount: 2
+
+image:
+  repository: nginx
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+container:
+  port: 80
+
+resources:
+  limits:
+    cpu:
+    memory: 256Mi
+  requests:
+    cpu:
+    memory: 128Mi
+
+frontend:
+  replicaCount: 2
+  image:
+    repository: nginx
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  container:
+    port: 80
+  resources:
+    limits:
+      cpu:
+      memory: 256Mi
+    requests:
+      cpu:
+      memory: 128Mi
+
+backend:
+  replicaCount: 2
+  image:
+    repository: node
+    tag: "18-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  container:
+    port: 3000
+  resources:
+    limits:
+      cpu:
+      memory: 512Mi
+    requests:
+      cpu:
+      memory: 256Mi

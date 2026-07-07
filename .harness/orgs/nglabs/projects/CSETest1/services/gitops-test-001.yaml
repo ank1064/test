@@ -1,0 +1,8 @@
+service:
+  name: gitops-test-001
+  identifier: gitops_test_001
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  serviceDefinition:
+    type: Kubernetes
+    spec: {}

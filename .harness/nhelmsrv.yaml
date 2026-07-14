@@ -14,7 +14,7 @@ service:
                 spec:
                   connectorRef: bitnamihelm
               chartName: nginx
-              chartVersion: <+input>
+              chartVersion: "3"
               subChartPath: ""
               helmVersion: V3
               skipResourceVersioning: false

@@ -1,0 +1,51 @@
+service:
+  name: nhelmsrv
+  identifier: nhelmsrv
+  serviceDefinition:
+    type: NativeHelm
+    spec:
+      manifests:
+        - manifest:
+            identifier: nginx
+            type: HelmChart
+            spec:
+              store:
+                type: Http
+                spec:
+                  connectorRef: bitnamihelm
+              chartName: nginx
+              chartVersion: <+input>
+              subChartPath: ""
+              helmVersion: V3
+              skipResourceVersioning: false
+              enableDeclarativeRollback: false
+              commandFlags:
+                - commandType: Install
+                  flag: "--wait"
+                - commandType: Upgrade
+                  flag: "--wait"
+      variables:
+        - name: manifest_identifer
+          type: String
+          description: ""
+          required: false
+          value: nginx
+      hooks:
+        - postHook:
+            identifier: manifest_inspector
+            storeType: Inline
+            actions:
+              - TemplateManifest
+            store:
+              content: |-
+                #!/usr/bin/env bash
+                set -e
+
+                echo "[pre-service-hook] Starting..."
+                echo "[pre-service-hook] Current working directory: $(pwd)"
+                echo "[pre-service-hook] Sleeping for 10 minutes..."
+                sleep 600
+                echo "[pre-service-hook] Done."
+  gitOpsEnabled: false
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1

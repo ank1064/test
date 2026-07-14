@@ -1,0 +1,52 @@
+service:
+  name: helmNative
+  identifier: helmNative
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  serviceDefinition:
+    spec:
+      manifests:
+        - manifest:
+            identifier: redis
+            type: HelmChart
+            spec:
+              store:
+                type: Github
+                spec:
+                  connectorRef: account.github_ank
+                  gitFetchType: Branch
+                  folderPath: /sample-bitnami-helm/
+                  repoName: deploy-artifacts
+                  branch: main
+              subChartPath: ""
+              valuesPaths:
+                - sample-bitnami-helm/values.yaml
+              optionalValuesYaml: false
+              skipResourceVersioning: false
+              enableDeclarativeRollback: false
+              helmVersion: V3
+              fetchHelmChartMetadata: false
+      hooks:
+        - postHook:
+            identifier: cpu-check-and-sleep
+            storeType: Inline
+            actions:
+              - FetchFiles
+              - TemplateManifest
+            store:
+              content: |
+                set -e
+                pwd
+                echo "===== Checking for cpu: 2 in manifest files ====="
+                if [ -z "$MANIFEST_FILES_DIRECTORY" ] || [ ! -d "$MANIFEST_FILES_DIRECTORY" ]; then
+                  echo "ERROR: MANIFEST_FILES_DIRECTORY not set or not a directory"
+                  exit 1
+                fi
+                cd "$MANIFEST_FILES_DIRECTORY"
+                while IFS= read -r path; do
+                  echo "Found cpu: 2 in: $path"
+                done < <(grep -rl -E 'cpu:\s*2\b' . 2>/dev/null || true)
+                echo "===== Done. Sleeping 10 minutes ====="
+                sleep 30
+                echo "===== Sleep complete ====="
+    type: NativeHelm

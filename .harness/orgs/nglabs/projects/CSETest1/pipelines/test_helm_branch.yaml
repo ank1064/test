@@ -13,18 +13,8 @@ pipeline:
         spec:
           deploymentType: NativeHelm
           service:
-            serviceRef: nhelmsrv
-            serviceInputs:
-              serviceDefinition:
-                type: NativeHelm
-                spec:
-                  manifests:
-                    - manifest:
-                        identifier: nginx
-                        type: HelmChart
-                        spec:
-                          chartVersion: <+input>
-            gitBranch: branch-031
+            serviceRef: <+input>
+            serviceInputs: <+input>
           environment:
             environmentRef: <+input>
             deployToAll: false

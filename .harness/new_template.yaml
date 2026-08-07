@@ -1,0 +1,959 @@
+template:
+  name: POC Whole Pipeline 0718083234 - gaps filled for WORKDAY-EDGEPAY
+  identifier: poc_whole_pipeline_tpl_0718083234_fi_filled_WORKDAY_EDGEPAY
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    ai_generated: 'true'
+  spec:
+    description: "Multi-service edge payments platform with parallel Go/Java/Node\
+      \ builds, contract + load tests, STO gates, and K8s canary CD (dev 10% \u2192\
+      \ staging 25% \u2192 production 50% with manual promote)."
+    properties:
+      ci:
+        codebase:
+          connectorRef: <+input>
+          repoName: <+input>
+          build:
+            type: branch
+            spec:
+              branch: <+input>
+    variables:
+    - name: AUTH_IMAGE_REGISTRY
+      type: String
+      value: <+input>
+    - name: LEDGER_IMAGE_REGISTRY
+      type: String
+      value: <+input>
+    - name: WEBHOOK_IMAGE_REGISTRY
+      type: String
+      value: <+input>
+    - name: APP_NAME
+      type: String
+      value: <+input>
+    - name: SONAR_URL
+      type: String
+      value: <+input>
+    - name: SONAR_PROJECT_KEY
+      type: String
+      value: <+input>
+    - name: HELM_CHART_PATH
+      type: String
+      value: ./helm/edge-payments
+    - name: DEPLOY_HOST_DEV
+      type: String
+      value: <+input>
+    - name: DEPLOY_HOST_STAGING
+      type: String
+      value: <+input>
+    - name: DEPLOY_HOST_PROD
+      type: String
+      value: <+input>
+    - name: K8S_NAMESPACE_DEV
+      type: String
+      value: wd-edgepay-dev
+    - name: K8S_NAMESPACE_STAGING
+      type: String
+      value: wd-edgepay-staging
+    - name: K8S_NAMESPACE_PROD
+      type: String
+      value: wd-edgepay-prod
+    - name: CANARY_WEIGHT_DEV
+      type: Number
+      value: 10
+    - name: CANARY_WEIGHT_STAGING
+      type: Number
+      value: 25
+    - name: CANARY_WEIGHT_PROD
+      type: Number
+      value: 50
+    - name: CANARY_ANALYSIS_WINDOW_SEC
+      type: Number
+      value: 300
+    - name: K6_VUS
+      type: Number
+      value: 20
+    - name: K6_DURATION
+      type: String
+      value: 60s
+    - name: K6_SCRIPT_PATH
+      type: String
+      value: tests/k6/payment-smoke.js
+    stages:
+    - stage:
+        name: Bootstrap
+        identifier: bootstrap
+        type: CI
+        spec:
+          cloneCodebase: true
+          caching:
+            enabled: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Verify Toolchains
+                identifier: verify_toolchains
+                spec:
+                  connectorRef: account.harnessImage
+                  image: alpine:3.19
+                  shell: Sh
+                  command: 'echo "Verifying toolchain availability..."
+
+                    echo "Go, Java, Node, Docker, Helm versions will be validated
+                    in build stages"
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Parallel Build
+        identifier: parallel_build
+        type: CI
+        spec:
+          cloneCodebase: true
+          caching:
+            enabled: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - parallel:
+              - step:
+                  type: Run
+                  name: Auth BFF Build
+                  identifier: auth_bff_build
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: golang:1.22-alpine
+                    shell: Sh
+                    command: 'cd services/auth-bff
+
+                      go build -o bin/auth-bff ./cmd/server
+
+                      go test ./... -count=1
+
+                      '
+              - step:
+                  type: Run
+                  name: Ledger Service Build
+                  identifier: ledger_service_build
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: maven:3.9-eclipse-temurin-21
+                    shell: Sh
+                    command: mvn -B -pl services/ledger-svc -am package -DskipTests
+              - step:
+                  type: Run
+                  name: Webhook Relay Build
+                  identifier: webhook_relay_build
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: node:20-alpine
+                    shell: Sh
+                    command: 'cd services/webhook-relay
+
+                      npm ci
+
+                      npm run build
+
+                      '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Parallel Test
+        identifier: parallel_test
+        type: CI
+        spec:
+          cloneCodebase: true
+          caching:
+            enabled: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - parallel:
+              - stepGroup:
+                  name: Unit and Contract Tests
+                  identifier: unit_contract_tests
+                  steps:
+                  - step:
+                      type: RunTests
+                      name: JUnit Ledger Tests
+                      identifier: junit_ledger_tests
+                      spec:
+                        connectorRef: account.harnessImage
+                        image: maven:3.9-eclipse-temurin-21
+                        shell: Sh
+                        language: Java
+                        buildTool: Maven
+                        args: test -pl services/ledger-svc
+                        runOnlySelectedTests: false
+                        enableTestSplitting: false
+                        reports:
+                          type: JUnit
+                          spec:
+                            paths:
+                            - '**/surefire-reports/*.xml'
+                  - step:
+                      type: Run
+                      name: Go Auth BFF Tests
+                      identifier: go_auth_bff_tests
+                      spec:
+                        connectorRef: account.harnessImage
+                        image: golang:1.22-alpine
+                        shell: Sh
+                        command: 'cd services/auth-bff
+
+                          go test ./... -race -coverprofile=coverage.out
+
+                          '
+                  - step:
+                      type: Run
+                      name: Pact Contract Publish
+                      identifier: pact_contract_publish
+                      spec:
+                        connectorRef: account.harnessImage
+                        image: node:20-alpine
+                        shell: Sh
+                        command: 'cd contracts
+
+                          npm ci
+
+                          npx pact-broker publish pacts --consumer-app-version=<+pipeline.sequenceId>
+
+                          '
+              - stepGroup:
+                  name: k6 Load Smoke Test
+                  identifier: k6_load_smoke_test
+                  steps:
+                  - step:
+                      type: Background
+                      name: Docker Compose Stack
+                      identifier: docker_compose_stack
+                      spec:
+                        connectorRef: account.harnessImage
+                        image: docker:24-dind
+                        shell: Sh
+                        command: dockerd-entrypoint.sh
+                        privileged: true
+                  - step:
+                      type: Run
+                      name: Start Compose Stack
+                      identifier: start_compose_stack
+                      spec:
+                        connectorRef: account.harnessImage
+                        image: docker/compose:latest
+                        shell: Sh
+                        command: 'docker compose -f tests/docker-compose.edge.yml
+                          up -d
+
+                          sleep 30
+
+                          '
+                  - step:
+                      type: Run
+                      name: k6 Load Test
+                      identifier: k6_load_test
+                      spec:
+                        connectorRef: account.harnessImage
+                        image: grafana/k6:latest
+                        shell: Sh
+                        command: 'k6 run --vus <+pipeline.variables.K6_VUS> --duration
+                          <+pipeline.variables.K6_DURATION> <+pipeline.variables.K6_SCRIPT_PATH>
+
+                          '
+                        envVariables:
+                          K6_OUT: json=k6-results.json
+                  - step:
+                      type: Run
+                      name: Teardown Compose Stack
+                      identifier: teardown_compose_stack
+                      spec:
+                        connectorRef: account.harnessImage
+                        image: docker/compose:latest
+                        shell: Sh
+                        command: docker compose -f tests/docker-compose.edge.yml down
+                          -v
+          sharedPaths:
+          - /var/run
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: STO Gates
+        identifier: sto_gates
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - parallel:
+              - step:
+                  type: Run
+                  name: SonarQube Analysis
+                  identifier: sonarqube_analysis
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: maven:3.9-eclipse-temurin-21
+                    shell: Sh
+                    command: "mvn -B sonar:sonar \\\n  -Dsonar.projectKey=<+pipeline.variables.SONAR_PROJECT_KEY>\
+                      \ \\\n  -Dsonar.host.url=<+pipeline.variables.SONAR_URL> \\\n\
+                      \  -Dsonar.login=<+secrets.getValue(\"sonar_token\")> \\\n \
+                      \ -Dsonar.qualitygate.wait=true\n"
+              - step:
+                  type: Snyk
+                  name: Snyk Dependency Scan
+                  identifier: snyk_dependency_scan
+                  spec:
+                    mode: orchestration
+                    config: default
+                    target:
+                      type: repository
+                      detection: auto
+                      name: <+input>
+                      variant: <+input>
+                    advanced:
+                      log:
+                        level: info
+                      fail_on_severity: high
+                    auth:
+                      access_token: <+input>
+              - step:
+                  type: AquaTrivy
+                  name: Trivy FS Scan
+                  identifier: trivy_fs_scan
+                  spec:
+                    mode: orchestration
+                    config: default
+                    target:
+                      type: repository
+                      detection: auto
+                      name: <+input>
+                      variant: <+input>
+                    advanced:
+                      log:
+                        level: info
+                      fail_on_severity: high
+              - step:
+                  type: Gitleaks
+                  name: Gitleaks Scan
+                  identifier: gitleaks_scan
+                  spec:
+                    mode: orchestration
+                    config: default
+                    target:
+                      type: repository
+                      detection: auto
+                      name: <+input>
+                      variant: <+input>
+                    advanced:
+                      log:
+                        level: info
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Publish
+        identifier: publish
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - parallel:
+              - step:
+                  type: BuildAndPushDockerRegistry
+                  name: Build and Push Auth BFF
+                  identifier: build_push_auth_bff
+                  spec:
+                    connectorRef: <+input>
+                    repo: <+pipeline.variables.AUTH_IMAGE_REGISTRY>
+                    tags:
+                    - <+pipeline.sequenceId>
+                    - latest
+                    dockerfile: services/auth-bff/Dockerfile
+                    context: services/auth-bff
+                    caching: true
+              - step:
+                  type: BuildAndPushDockerRegistry
+                  name: Build and Push Ledger Service
+                  identifier: build_push_ledger_service
+                  spec:
+                    connectorRef: <+input>
+                    repo: <+pipeline.variables.LEDGER_IMAGE_REGISTRY>
+                    tags:
+                    - <+pipeline.sequenceId>
+                    dockerfile: services/ledger-svc/Dockerfile
+                    context: services/ledger-svc
+                    caching: true
+              - step:
+                  type: BuildAndPushDockerRegistry
+                  name: Build and Push Webhook Relay
+                  identifier: build_push_webhook_relay
+                  spec:
+                    connectorRef: <+input>
+                    repo: <+pipeline.variables.WEBHOOK_IMAGE_REGISTRY>
+                    tags:
+                    - <+pipeline.sequenceId>
+                    dockerfile: services/webhook-relay/Dockerfile
+                    context: services/webhook-relay
+                    caching: true
+            - step:
+                type: Run
+                name: Helm Lint and Package
+                identifier: helm_lint_package
+                spec:
+                  connectorRef: account.harnessImage
+                  image: alpine/helm:3.14.0
+                  shell: Sh
+                  command: "helm lint <+pipeline.variables.HELM_CHART_PATH>\nhelm\
+                    \ package <+pipeline.variables.HELM_CHART_PATH> \\\n  --version\
+                    \ 1.0.<+pipeline.sequenceId> \\\n  --app-version <+pipeline.sequenceId>\
+                    \ \\\n  -d dist/\n"
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Canary Ready
+        identifier: canary_ready
+        type: Approval
+        spec:
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: Mark Release Candidate
+                identifier: mark_release_candidate
+                spec:
+                  approvalMessage: EdgePay RC <+pipeline.sequenceId> ready for canary
+                    CD. Approve to proceed with canary deployments.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                  approverInputs: []
+                timeout: 1d
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy Dev Canary
+        identifier: deploy_dev_canary
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions: <+input>
+          execution:
+            steps:
+            - stepGroup:
+                name: Canary Deployment
+                identifier: canaryDeployment
+                steps:
+                - step:
+                    name: Canary Deployment
+                    identifier: canaryDeploymentStep
+                    type: K8sCanaryDeploy
+                    timeout: 10m
+                    spec:
+                      instanceSelection:
+                        type: Percentage
+                        spec:
+                          percentage: <+pipeline.variables.CANARY_WEIGHT_DEV>
+                      skipDryRun: false
+                - step:
+                    type: K8sApply
+                    name: Apply Traffic Split Dev
+                    identifier: apply_traffic_split_dev
+                    spec:
+                      filePaths:
+                      - manifests/traffic-split-dev.yaml
+                      skipDryRun: false
+                      skipSteadyStateCheck: false
+                    timeout: 10m
+                - step:
+                    type: ShellScript
+                    name: Canary Analysis Window Dev
+                    identifier: canary_analysis_window_dev
+                    spec:
+                      shell: Bash
+                      executionTarget: {}
+                      source:
+                        type: Inline
+                        spec:
+                          script: 'echo "Canary at <+pipeline.variables.CANARY_WEIGHT_DEV>%
+                            traffic weight"
+
+                            echo "Waiting for analysis window: <+pipeline.variables.CANARY_ANALYSIS_WINDOW_SEC>
+                            seconds"
+
+                            sleep <+pipeline.variables.CANARY_ANALYSIS_WINDOW_SEC>
+
+                            '
+                    timeout: 10m
+                - step:
+                    type: ShellScript
+                    name: Verify Canary Dev
+                    identifier: verify_canary_dev
+                    spec:
+                      shell: Bash
+                      executionTarget: {}
+                      source:
+                        type: Inline
+                        spec:
+                          script: "kubectl rollout status deployment/<+pipeline.variables.APP_NAME>-canary\
+                            \ \\\n  --namespace <+pipeline.variables.K8S_NAMESPACE_DEV>\
+                            \ \\\n  --timeout=300s\n"
+                    timeout: 10m
+                - step:
+                    type: Http
+                    name: Smoke Test Canary Dev
+                    identifier: smoke_test_canary_dev
+                    spec:
+                      url: https://<+pipeline.variables.DEPLOY_HOST_DEV>/health
+                      method: GET
+                      assertion: <+httpResponseCode> == 200
+                    timeout: 2m
+                - step:
+                    name: Canary Delete
+                    identifier: canaryDelete
+                    type: K8sCanaryDelete
+                    timeout: 10m
+                    spec: {}
+            - stepGroup:
+                name: Primary Deployment
+                identifier: primaryDeployment
+                steps:
+                - step:
+                    name: Rolling Deployment
+                    identifier: rollingDeployment
+                    type: K8sRollingDeploy
+                    timeout: 10m
+                    spec:
+                      skipDryRun: false
+                - step:
+                    type: ShellScript
+                    name: Verify Rollout Dev
+                    identifier: verify_rollout_dev
+                    spec:
+                      shell: Bash
+                      executionTarget: {}
+                      source:
+                        type: Inline
+                        spec:
+                          script: "kubectl rollout status deployment/<+pipeline.variables.APP_NAME>\
+                            \ \\\n  --namespace <+pipeline.variables.K8S_NAMESPACE_DEV>\
+                            \ \\\n  --timeout=300s\n"
+                    timeout: 10m
+                - step:
+                    type: Http
+                    name: Smoke Test Dev
+                    identifier: smoke_test_dev
+                    spec:
+                      url: https://<+pipeline.variables.DEPLOY_HOST_DEV>/health
+                      method: GET
+                      assertion: <+httpResponseCode> == 200
+                    timeout: 2m
+            rollbackSteps:
+            - step:
+                name: Canary Delete
+                identifier: rollbackCanaryDelete
+                type: K8sCanaryDelete
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Rolling Rollback
+                identifier: rollingRollback
+                type: K8sRollingRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy Staging Canary
+        identifier: deploy_staging_canary
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions: <+input>
+          execution:
+            steps:
+            - stepGroup:
+                name: Canary Deployment
+                identifier: canaryDeployment
+                steps:
+                - step:
+                    name: Canary Deployment
+                    identifier: canaryDeploymentStep
+                    type: K8sCanaryDeploy
+                    timeout: 10m
+                    spec:
+                      instanceSelection:
+                        type: Percentage
+                        spec:
+                          percentage: <+pipeline.variables.CANARY_WEIGHT_STAGING>
+                      skipDryRun: false
+                - step:
+                    type: K8sApply
+                    name: Apply Traffic Split Staging
+                    identifier: apply_traffic_split_staging
+                    spec:
+                      filePaths:
+                      - manifests/traffic-split-staging.yaml
+                      skipDryRun: false
+                      skipSteadyStateCheck: false
+                    timeout: 10m
+                - step:
+                    type: ShellScript
+                    name: Canary Analysis Window Staging
+                    identifier: canary_analysis_window_staging
+                    spec:
+                      shell: Bash
+                      executionTarget: {}
+                      source:
+                        type: Inline
+                        spec:
+                          script: 'echo "Canary at <+pipeline.variables.CANARY_WEIGHT_STAGING>%
+                            traffic weight"
+
+                            echo "Waiting for analysis window: <+pipeline.variables.CANARY_ANALYSIS_WINDOW_SEC>
+                            seconds"
+
+                            sleep <+pipeline.variables.CANARY_ANALYSIS_WINDOW_SEC>
+
+                            '
+                    timeout: 10m
+                - step:
+                    type: ShellScript
+                    name: Verify Canary Staging
+                    identifier: verify_canary_staging
+                    spec:
+                      shell: Bash
+                      executionTarget: {}
+                      source:
+                        type: Inline
+                        spec:
+                          script: "kubectl rollout status deployment/<+pipeline.variables.APP_NAME>-canary\
+                            \ \\\n  --namespace <+pipeline.variables.K8S_NAMESPACE_STAGING>\
+                            \ \\\n  --timeout=300s\n"
+                    timeout: 10m
+                - step:
+                    type: Http
+                    name: Smoke Test Canary Staging
+                    identifier: smoke_test_canary_staging
+                    spec:
+                      url: https://<+pipeline.variables.DEPLOY_HOST_STAGING>/health
+                      method: GET
+                      assertion: <+httpResponseCode> == 200
+                    timeout: 2m
+                - step:
+                    name: Canary Delete
+                    identifier: canaryDelete
+                    type: K8sCanaryDelete
+                    timeout: 10m
+                    spec: {}
+            - stepGroup:
+                name: Primary Deployment
+                identifier: primaryDeployment
+                steps:
+                - step:
+                    name: Rolling Deployment
+                    identifier: rollingDeployment
+                    type: K8sRollingDeploy
+                    timeout: 10m
+                    spec:
+                      skipDryRun: false
+                - step:
+                    type: ShellScript
+                    name: Verify Rollout Staging
+                    identifier: verify_rollout_staging
+                    spec:
+                      shell: Bash
+                      executionTarget: {}
+                      source:
+                        type: Inline
+                        spec:
+                          script: "kubectl rollout status deployment/<+pipeline.variables.APP_NAME>\
+                            \ \\\n  --namespace <+pipeline.variables.K8S_NAMESPACE_STAGING>\
+                            \ \\\n  --timeout=300s\n"
+                    timeout: 10m
+                - step:
+                    type: Http
+                    name: Smoke Test Staging
+                    identifier: smoke_test_staging
+                    spec:
+                      url: https://<+pipeline.variables.DEPLOY_HOST_STAGING>/health
+                      method: GET
+                      assertion: <+httpResponseCode> == 200
+                    timeout: 2m
+            rollbackSteps:
+            - step:
+                name: Canary Delete
+                identifier: rollbackCanaryDelete
+                type: K8sCanaryDelete
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Rolling Rollback
+                identifier: rollingRollback
+                type: K8sRollingRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Approval for Production
+        identifier: approval_for_production
+        type: Approval
+        spec:
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: Production Approval
+                identifier: production_approval
+                spec:
+                  approvalMessage: Dev and Staging canary deployments successful.
+                    Approve to deploy to production with <+pipeline.variables.CANARY_WEIGHT_PROD>%
+                    canary.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                  approverInputs: []
+                timeout: 1d
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy Production Canary
+        identifier: deploy_production_canary
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions: <+input>
+          execution:
+            steps:
+            - stepGroup:
+                name: Canary Deployment
+                identifier: canaryDeployment
+                steps:
+                - step:
+                    name: Canary Deployment
+                    identifier: canaryDeploymentStep
+                    type: K8sCanaryDeploy
+                    timeout: 10m
+                    spec:
+                      instanceSelection:
+                        type: Percentage
+                        spec:
+                          percentage: <+pipeline.variables.CANARY_WEIGHT_PROD>
+                      skipDryRun: false
+                - step:
+                    type: K8sApply
+                    name: Apply Traffic Split Prod
+                    identifier: apply_traffic_split_prod
+                    spec:
+                      filePaths:
+                      - manifests/traffic-split-prod.yaml
+                      skipDryRun: false
+                      skipSteadyStateCheck: false
+                    timeout: 10m
+                - step:
+                    type: ShellScript
+                    name: Canary Analysis Window Prod
+                    identifier: canary_analysis_window_prod
+                    spec:
+                      shell: Bash
+                      executionTarget: {}
+                      source:
+                        type: Inline
+                        spec:
+                          script: 'echo "Canary at <+pipeline.variables.CANARY_WEIGHT_PROD>%
+                            traffic weight"
+
+                            echo "Waiting for analysis window: <+pipeline.variables.CANARY_ANALYSIS_WINDOW_SEC>
+                            seconds"
+
+                            sleep <+pipeline.variables.CANARY_ANALYSIS_WINDOW_SEC>
+
+                            '
+                    timeout: 10m
+                - step:
+                    type: ShellScript
+                    name: Verify Canary Prod
+                    identifier: verify_canary_prod
+                    spec:
+                      shell: Bash
+                      executionTarget: {}
+                      source:
+                        type: Inline
+                        spec:
+                          script: "kubectl rollout status deployment/<+pipeline.variables.APP_NAME>-canary\
+                            \ \\\n  --namespace <+pipeline.variables.K8S_NAMESPACE_PROD>\
+                            \ \\\n  --timeout=300s\n"
+                    timeout: 10m
+                - step:
+                    type: Http
+                    name: Smoke Test Canary Prod
+                    identifier: smoke_test_canary_prod
+                    spec:
+                      url: https://<+pipeline.variables.DEPLOY_HOST_PROD>/health
+                      method: GET
+                      assertion: <+httpResponseCode> == 200
+                    timeout: 2m
+                - step:
+                    type: HarnessApproval
+                    name: Promote Canary to Full Rollout
+                    identifier: promote_canary_approval
+                    spec:
+                      approvalMessage: Canary at <+pipeline.variables.CANARY_WEIGHT_PROD>%
+                        is healthy. Approve to promote to full production rollout.
+                      includePipelineExecutionHistory: true
+                      isAutoRejectEnabled: false
+                      approvers:
+                        userGroups:
+                        - <+input>
+                        minimumCount: 1
+                        disallowPipelineExecutor: false
+                      approverInputs: []
+                    timeout: 1d
+                - step:
+                    name: Canary Delete
+                    identifier: canaryDelete
+                    type: K8sCanaryDelete
+                    timeout: 10m
+                    spec: {}
+            - stepGroup:
+                name: Primary Deployment
+                identifier: primaryDeployment
+                steps:
+                - step:
+                    name: Rolling Deployment
+                    identifier: rollingDeployment
+                    type: K8sRollingDeploy
+                    timeout: 10m
+                    spec:
+                      skipDryRun: false
+                - step:
+                    type: ShellScript
+                    name: Verify Rollout Prod
+                    identifier: verify_rollout_prod
+                    spec:
+                      shell: Bash
+                      executionTarget: {}
+                      source:
+                        type: Inline
+                        spec:
+                          script: "kubectl rollout status deployment/<+pipeline.variables.APP_NAME>\
+                            \ \\\n  --namespace <+pipeline.variables.K8S_NAMESPACE_PROD>\
+                            \ \\\n  --timeout=300s\n"
+                    timeout: 10m
+                - step:
+                    type: Http
+                    name: Smoke Test Prod
+                    identifier: smoke_test_prod
+                    spec:
+                      url: https://<+pipeline.variables.DEPLOY_HOST_PROD>/health
+                      method: GET
+                      assertion: <+httpResponseCode> == 200
+                    timeout: 2m
+            rollbackSteps:
+            - step:
+                name: Canary Delete
+                identifier: rollbackCanaryDelete
+                type: K8sCanaryDelete
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Rolling Rollback
+                identifier: rollingRollback
+                type: K8sRollingRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+  description: Gap-filled Harness pipeline for Bamboo plan WORKDAY-EDGEPAY, source
+    unit Edge Payments Platform - Multi-Svc Canar; cloned from poc_whole_pipeline_tpl_0718083234_fi_filled_WORKDAY_BENEFITS

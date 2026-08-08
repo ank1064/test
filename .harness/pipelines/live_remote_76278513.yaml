@@ -1,0 +1,27 @@
+pipeline:
+  name: Live remote 76278513
+  identifier: live_remote_76278513
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Live remote 76278513. Review connectors, secrets,
+    and runtime inputs before production use.'
+  tags: {}
+  stages:
+  - stage:
+      name: Build  Test
+      identifier: Build_Test
+      description: 'Bamboo env: Build & Test'
+      template:
+        templateRef: account.SCR
+        versionLabel: '1'
+        templateInputs:
+          type: Custom
+  - stage:
+      name: Package
+      identifier: Package
+      description: 'Bamboo env: Package'
+      template:
+        templateRef: account.SCR
+        versionLabel: '1'
+        templateInputs:
+          type: Custom

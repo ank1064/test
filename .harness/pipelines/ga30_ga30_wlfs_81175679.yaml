@@ -1,0 +1,21 @@
+pipeline:
+  name: GA30 GA30-WLFS 81175679
+  identifier: ga30_ga30_wlfs_81175679
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: GA30 GA30-WLFS 81175679. Review connectors, secrets,
+    and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: ci_full_pipeline_template
+    versionLabel: v1
+    templateInputs:
+      stages:
+      - stage:
+          identifier: build_and_test
+          type: CI
+          spec:
+            infrastructure:
+              spec:
+                connectorRef: <+input>
+                namespace: <+input>

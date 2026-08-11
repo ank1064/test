@@ -1,0 +1,675 @@
+template:
+  name: Enterprise ZTNAV2 Gap 89728238 - gaps filled for SECURITY-ZTNAV2
+  identifier: demo_mapper_build_sto_starter_filled_SECURITY_ZTNAV2
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    mapper_demo: 'true'
+    role: starter
+  description: Gap-filled Harness pipeline for Bamboo plan SECURITY-ZTNAV2, source
+    unit Entire pipeline; cloned from demo_mapper_build_sto_starter
+  spec:
+    properties:
+      ci:
+        codebase:
+          connectorRef: <+input>
+          repoName: <+input>
+          build: <+input>
+    stages:
+    - stage:
+        name: Build Control Plane
+        identifier: build_control_plane
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Compile Go Broker
+                identifier: compile_go_broker
+                type: Run
+                spec:
+                  shell: Sh
+                  command: go build -trimpath -o dist/broker ./cmd/broker
+            - step:
+                name: Generate gRPC Clients
+                identifier: generate_grpc_clients
+                type: Run
+                spec:
+                  shell: Sh
+                  command: buf generate api
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Build Policy Engine
+        identifier: build_policy_engine
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Cargo Locked Release Build
+                identifier: cargo_release_build
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cargo build --release --locked
+            - step:
+                name: Compile OPA Policies
+                identifier: compile_opa_policies
+                type: Run
+                spec:
+                  shell: Sh
+                  command: opa build -b policy -o dist/ztna-policy.tar.gz
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Security Critical Tests
+        identifier: security_critical_tests
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Go Race Tests
+                identifier: go_race_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'go test -race -coverprofile=coverage.out -json ./... >
+                    test-results.json || true
+
+                    go-junit-report < test-results.json > test-results/report.xml
+
+                    '
+                  reports:
+                    type: JUnit
+                    spec:
+                      paths:
+                      - '**/test-results/*.xml'
+            - step:
+                name: Rust Test Suites
+                identifier: rust_test_suites
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cargo test --all-features
+            - step:
+                name: Fuzz Token Parser
+                identifier: fuzz_token_parser
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cargo fuzz run token_parser -- -max_total_time=180
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Policy Conformance
+        identifier: policy_conformance
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: OPA Unit Tests
+                identifier: opa_unit_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: opa test policy -v
+            - step:
+                name: Conftest Kubernetes Policies
+                identifier: conftest_k8s_policies
+                type: Run
+                spec:
+                  shell: Sh
+                  command: conftest test deploy
+            - step:
+                name: Access Matrix Simulation
+                identifier: access_matrix_simulation
+                type: Run
+                spec:
+                  shell: Sh
+                  command: python tests/access_matrix.py --deny-by-default
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Supply Chain Gates
+        identifier: supply_chain_gates
+        type: SecurityTests
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Semgrep SAST
+                identifier: semgrep_sast
+                type: Semgrep
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+pipeline.name>
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+            - step:
+                name: Trivy Critical Scan
+                identifier: trivy_critical_scan
+                type: AquaTrivy
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+pipeline.name>
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    args:
+                      cli: --severity CRITICAL --exit-code 1
+            - step:
+                name: Gitleaks Secret Scan
+                identifier: gitleaks
+                type: Gitleaks
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+pipeline.name>
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+            - step:
+                name: Generate SLSA Provenance
+                identifier: generate_slsa_provenance
+                type: Run
+                spec:
+                  shell: Sh
+                  command: slsa-verifier generate --level <+pipeline.variables.SLSA_LEVEL>
+                    > provenance.json
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Publish Trusted Artifacts
+        identifier: publish_trusted_artifacts
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Build and Push Broker Image
+                identifier: build_push_broker_image
+                type: BuildAndPushDockerRegistry
+                spec:
+                  connectorRef: <+input>
+                  repo: <+pipeline.variables.IMAGE_REGISTRY>
+                  tags:
+                  - <+pipeline.sequenceId>
+                  dockerfile: Dockerfile
+            - step:
+                name: Sign and Attest Image
+                identifier: sign_attest_image
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'cosign sign <+pipeline.variables.IMAGE_REGISTRY>:<+pipeline.sequenceId>
+
+                    cosign attest --predicate provenance.json <+pipeline.variables.IMAGE_REGISTRY>:<+pipeline.sequenceId>
+
+                    '
+            - step:
+                name: Publish OPA Bundle
+                identifier: publish_opa_bundle
+                type: Run
+                spec:
+                  shell: Sh
+                  command: aws s3 cp dist/ztna-policy.tar.gz <+pipeline.variables.OPA_BUNDLE>/<+pipeline.sequenceId>/
+            - step:
+                name: Trivy Container Scan
+                identifier: trivy_container_scan
+                type: AquaTrivy
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+pipeline.variables.IMAGE_REGISTRY>
+                    type: container
+                    variant: <+pipeline.sequenceId>
+                  privileged: true
+                  image:
+                    type: docker_v2
+                    name: <+pipeline.variables.IMAGE_REGISTRY>
+                    tag: <+pipeline.sequenceId>
+                  advanced:
+                    log:
+                      level: info
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Production Approval
+        identifier: production_approval
+        type: Approval
+        spec:
+          execution:
+            steps:
+            - step:
+                name: Security Change Approval Gate
+                identifier: security_change_approval
+                type: HarnessApproval
+                spec:
+                  approvalMessage: Manual approval required from Security Engineering
+                    and IAM owner for production deployment
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 2
+                    disallowPipelineExecutor: true
+                  approverInputs: []
+                timeout: 7d
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy to Security Dev
+        identifier: deploy_security_dev
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Deploy
+                identifier: helm_deploy_dev
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Verify Rollout
+                identifier: verify_rollout_dev
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace security-dev
+                        --timeout=300s
+                timeout: 10m
+            - step:
+                name: Smoke Test
+                identifier: smoke_test_dev
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: curl -fsS https://app-security-dev.example.com/health
+                timeout: 5m
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: helm_rollback_dev
+                type: HelmRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy to Red Team
+        identifier: deploy_red_team
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Deploy
+                identifier: helm_deploy_red_team
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Verify Rollout
+                identifier: verify_rollout_red_team
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace red-team
+                        --timeout=300s
+                timeout: 10m
+            - step:
+                name: Smoke Test
+                identifier: smoke_test_red_team
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: curl -fsS https://app-red-team.example.com/health
+                timeout: 5m
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: helm_rollback_red_team
+                type: HelmRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Progressive Deployment Production
+        identifier: progressive_deployment_production
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Deploy Canary
+                identifier: helm_deploy_canary
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Run Authorization Probes
+                identifier: authz_probes
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: ./ops/authz-probe.sh --fail-closed
+                timeout: 10m
+            - step:
+                name: Promote Full Rollout
+                identifier: promote_full_rollout
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl argo rollouts promote ztna-broker --full
+                timeout: 10m
+            - step:
+                name: Verify Rollout
+                identifier: verify_rollout_prod
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace production
+                        --timeout=300s
+                timeout: 10m
+            - step:
+                name: Smoke Test
+                identifier: smoke_test_prod
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: curl -fsS https://app-production.example.com/health
+                timeout: 5m
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: helm_rollback_prod
+                type: HelmRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Post Quantum Identity
+        identifier: post_quantum_identity
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Test Hybrid Post-Quantum Certificates
+                identifier: test_pqc_certs
+                type: Run
+                spec:
+                  shell: Sh
+                  command: pytest tests/pqc --algorithm dilithium3
+            - step:
+                name: Validate Hardware Attestation Chain
+                identifier: validate_hw_attestation
+                type: Run
+                spec:
+                  shell: Sh
+                  command: go test ./tests/attestation -run TestTPMAndWebAuthn
+            - step:
+                name: Scan Cryptographic Inventory
+                identifier: scan_crypto_inventory
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cbom generate --format cyclonedx --output crypto-bom.json
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Emergency Access Drill
+        identifier: emergency_access_drill
+        type: Approval
+        spec:
+          execution:
+            steps:
+            - step:
+                name: Break Glass Approval
+                identifier: break_glass_approval
+                type: HarnessApproval
+                spec:
+                  approvalMessage: Manual approval required from CISO and Incident
+                    Commander for break-glass emergency access drill
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 2
+                    disallowPipelineExecutor: true
+                  approverInputs: []
+                timeout: 1d
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Emergency Drill Execution
+        identifier: emergency_drill_execution
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Deploy Isolated Policy Canary
+                identifier: deploy_isolated_canary
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Verify Automatic Credential Revocation
+                identifier: verify_credential_revocation
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: ./ops/revoke-drill.sh --maximum-seconds 30
+                timeout: 5m
+            rollbackSteps:
+            - step:
+                name: Helm Rollback Drill
+                identifier: helm_rollback_drill
+                type: HelmRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    variables:
+    - name: IMAGE_REGISTRY
+      type: String
+      description: Container image registry path
+      required: true
+      value: <+input>
+    - name: OPA_BUNDLE
+      type: String
+      description: S3 path for OPA policy bundles
+      required: true
+      value: <+input>
+    - name: CANARY_WEIGHT
+      type: String
+      description: Canary deployment weight percentage
+      required: false
+      value: '5'
+    - name: SLSA_LEVEL
+      type: String
+      description: SLSA provenance level
+      required: false
+      value: '3'

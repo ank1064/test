@@ -1,0 +1,50 @@
+pipeline:
+  name: Enterprise EDGEV2 89334339
+  identifier: enterprise_edgev2_89334339
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Enterprise EDGEV2 89334339. Review connectors,
+    secrets, and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: account.demo_mapper_build_sto_starter_filled_IOT_EDGEV2
+    versionLabel: v1
+    gitBranch: ank1064-patch-1
+    templateInputs:
+      properties:
+        ci:
+          codebase:
+            connectorRef: <+input>
+            repoName: <+input>
+            build: <+input>
+      stages:
+      - stage:
+          identifier: deploy_hil_lab
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: deploy_pilot_fleet
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: deploy_production_fleet
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>

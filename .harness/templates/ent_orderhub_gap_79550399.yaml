@@ -1,0 +1,594 @@
+template:
+  name: Enterprise ORDERHUB Gap 79550399 - gaps filled for RETAIL-ORDERHUB
+  identifier: spring_boot_helm_pipeline_filled_RETAIL_ORDERHUB
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    fixture: '10'
+    source: bamboo
+    stack: java-react
+  description: Gap-filled Harness pipeline for Bamboo plan RETAIL-ORDERHUB, source
+    unit Entire pipeline; cloned from spring_boot_helm_pipeline_filled_WORKDAY_MLGATE
+  spec:
+    stages:
+    - stage:
+        name: Build Order Services
+        identifier: BuildOrderServices
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Maven Reactor Package
+                identifier: maven_reactor_package
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'mvn -B -DskipTests clean package
+
+                    '
+            - step:
+                name: Generate OpenAPI Clients
+                identifier: generate_openapi_clients
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'mvn -B openapi-generator:generate
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Build Operations Console
+        identifier: BuildOperationsConsole
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Install Node Dependencies
+                identifier: install_node_dependencies
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    NPM_REGISTRY: <+pipeline.variables.npmRegistry>
+                  command: 'cd console && npm ci --registry=${NPM_REGISTRY}
+
+                    '
+            - step:
+                name: Build React Console
+                identifier: build_react_console
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'cd console && npm run build
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Service Tests
+        identifier: ServiceTests
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: JUnit and Testcontainers
+                identifier: junit_testcontainers
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'mvn -B test failsafe:integration-test
+
+                    '
+            - step:
+                name: Pact Consumer Verification
+                identifier: pact_consumer_verification
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'mvn -B pact:verify
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Browser and Load Tests
+        identifier: BrowserAndLoadTests
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Cypress Checkout Journeys
+                identifier: cypress_checkout_journeys
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'cd console && npx cypress run
+
+                    '
+            - step:
+                name: K6 Peak Order Load
+                identifier: k6_peak_order_load
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'k6 run tests/load/peak-orders.js
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Security Gates
+        identifier: SecurityGates
+        type: SecurityTests
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Sonarqube
+                name: Sonar Quality Gate
+                identifier: sonar_quality_gate
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+pipeline.variables.sonarProject>
+                    variant: <+codebase.branch>
+                  auth:
+                    access_token: <+input>
+                  tool:
+                    project_key: <+pipeline.variables.sonarProject>
+                  advanced:
+                    log:
+                      level: info
+            - step:
+                type: Owasp
+                name: OWASP Dependency Check
+                identifier: owasp_dependency_check
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+pipeline.variables.sonarProject>
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+            - step:
+                name: NPM Audit Production
+                identifier: npm_audit_production
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'cd console && npm audit --omit=dev --audit-level=high
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Publish Images
+        identifier: PublishImages
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Background
+                name: Docker DinD
+                identifier: docker_dind
+                spec:
+                  connectorRef: <+input>
+                  image: docker:dind
+                  shell: Sh
+                  privileged: true
+            - step:
+                name: Build and Push API Image
+                identifier: build_push_api_image
+                type: BuildAndPushDockerRegistry
+                spec:
+                  connectorRef: <+input>
+                  repo: <+pipeline.variables.imageRegistry>-api
+                  tags:
+                  - <+pipeline.sequenceId>
+                  dockerfile: services/api/Dockerfile
+                  context: .
+            - step:
+                name: Build and Push Console Image
+                identifier: build_push_console_image
+                type: BuildAndPushDockerRegistry
+                spec:
+                  connectorRef: <+input>
+                  repo: <+pipeline.variables.imageRegistry>-console
+                  tags:
+                  - <+pipeline.sequenceId>
+                  dockerfile: console/Dockerfile
+                  context: .
+          sharedPaths:
+          - /var/run
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Container Image Scan
+        identifier: ContainerImageScan
+        type: SecurityTests
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: AquaTrivy
+                name: Trivy API Image Scan
+                identifier: trivy_api_image_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: container
+                    detection: auto
+                    name: order-hub-api
+                    variant: <+pipeline.sequenceId>
+                  image:
+                    type: docker_v2
+                    name: <+pipeline.variables.imageRegistry>-api
+                    tag: <+pipeline.sequenceId>
+                    domain: <+input>
+                    access_token: <+input>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: critical
+            - step:
+                type: AquaTrivy
+                name: Trivy Console Image Scan
+                identifier: trivy_console_image_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: container
+                    detection: auto
+                    name: order-hub-console
+                    variant: <+pipeline.sequenceId>
+                  image:
+                    type: docker_v2
+                    name: <+pipeline.variables.imageRegistry>-console
+                    tag: <+pipeline.sequenceId>
+                    domain: <+input>
+                    access_token: <+input>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: critical
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy dev
+        identifier: DeployDev
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Dev
+                identifier: helmDeployDev
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                timeout: 15m
+            - step:
+                name: Verify Rollout Dev
+                identifier: verify_rollout_dev
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'kubectl rollout status deployment/order-api --namespace
+                        dev --timeout=300s
+
+                        '
+                  environmentVariables: []
+                  outputVariables: []
+                timeout: 10m
+            - step:
+                type: Http
+                name: Dev Smoke Test
+                identifier: dev_smoke_test
+                spec:
+                  url: <+pipeline.variables.devHealthCheckUrl>
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                  headers: []
+                timeout: 2m
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Dev
+                identifier: helmRollbackDev
+                spec: {}
+                timeout: 15m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy performance
+        identifier: DeployPerformance
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Performance
+                identifier: helmDeployPerformance
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                timeout: 15m
+            - step:
+                name: Verify Rollout Performance
+                identifier: verify_rollout_performance
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'kubectl rollout status deployment/order-api --namespace
+                        performance --timeout=300s
+
+                        '
+                  environmentVariables: []
+                  outputVariables: []
+                timeout: 10m
+            - step:
+                type: Http
+                name: Performance Smoke Test
+                identifier: performance_smoke_test
+                spec:
+                  url: <+pipeline.variables.performanceHealthCheckUrl>
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                  headers: []
+                timeout: 2m
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Performance
+                identifier: helmRollbackPerformance
+                spec: {}
+                timeout: 15m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy production
+        identifier: DeployProduction
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: Production Approval
+                identifier: production_approval
+                spec:
+                  approvalMessage: Approve deployment of Order Hub <+pipeline.sequenceId>
+                    to production. Dev and performance environments have passed all
+                    checks.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups: <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                timeout: 1d
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Production
+                identifier: helmDeployProduction
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                timeout: 15m
+            - step:
+                name: Verify Rollout Production
+                identifier: verify_rollout_production
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'kubectl rollout status deployment/order-api --namespace
+                        production --timeout=600s
+
+                        '
+                  environmentVariables: []
+                  outputVariables: []
+                timeout: 15m
+            - step:
+                type: Http
+                name: Production Smoke Test
+                identifier: production_smoke_test
+                spec:
+                  url: <+pipeline.variables.productionHealthCheckUrl>
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                  headers: []
+                timeout: 2m
+            - step:
+                name: Post Deploy Order Probe
+                identifier: post_deploy_order_probe
+                type: ShellScript
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: './ops/order-probe.sh
+
+                        '
+                  environmentVariables: []
+                  outputVariables: []
+                timeout: 10m
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Production
+                identifier: helmRollbackProduction
+                spec: {}
+                timeout: 15m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    variables:
+    - name: imageRegistry
+      type: String
+      value: <+input>
+      default: ghcr.io/acme-retail/order-hub
+    - name: npmRegistry
+      type: String
+      value: <+input>
+      default: https://npm.pkg.github.com
+    - name: sonarProject
+      type: String
+      value: <+input>
+      default: omnichannel-order-hub
+    - name: helmChart
+      type: String
+      value: <+input>
+      default: ./deploy/order-hub
+    - name: devHealthCheckUrl
+      type: String
+      value: <+input>
+      default: https://app-dev.example.com/health
+    - name: performanceHealthCheckUrl
+      type: String
+      value: <+input>
+      default: https://app-performance.example.com/health
+    - name: productionHealthCheckUrl
+      type: String
+      value: <+input>
+      default: https://app-production.example.com/health

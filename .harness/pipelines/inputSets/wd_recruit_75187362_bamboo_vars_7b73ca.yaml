@@ -1,0 +1,40 @@
+inputSet:
+  name: WD RECRUIT 75187362 - Bamboo Variable Mappings
+  tags: {}
+  identifier: wd_recruit_75187362_bamboo_vars_7b73ca
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: wd_recruit_75187362
+    template:
+      templateInputs:
+        variables:
+        - name: registryHost
+          type: String
+          value: <+input>
+        - name: imageRepo
+          type: String
+          value: <+input>
+        - name: chartName
+          type: String
+          value: <+input>
+        - name: releaseName
+          type: String
+          value: <+input>
+        - name: k8sNamespace
+          type: String
+          value: default
+        - name: javaVersion
+          type: String
+          value: '17'
+        stages:
+        - stage:
+            identifier: HelmDeploy
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>

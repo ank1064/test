@@ -1,0 +1,67 @@
+pipeline:
+  name: Enterprise ZTNAV2 89728238
+  identifier: enterprise_ztnav2_89728238
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Enterprise ZTNAV2 89728238. Review connectors,
+    secrets, and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: account.demo_mapper_build_sto_starter_filled_SECURITY_ZTNAV2
+    versionLabel: v1
+    gitBranch: ank1064-patch-1
+    templateInputs:
+      variables:
+      - name: IMAGE_REGISTRY
+        type: String
+        value: <+input>
+      - name: OPA_BUNDLE
+        type: String
+        value: <+input>
+      properties:
+        ci:
+          codebase:
+            connectorRef: <+input>
+            repoName: <+input>
+            build: <+input>
+      stages:
+      - stage:
+          identifier: deploy_security_dev
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: deploy_red_team
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: progressive_deployment_production
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: emergency_drill_execution
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>

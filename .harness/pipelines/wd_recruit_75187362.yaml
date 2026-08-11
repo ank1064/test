@@ -1,0 +1,42 @@
+pipeline:
+  name: WD RECRUIT 75187362
+  identifier: wd_recruit_75187362
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: WD RECRUIT 75187362. Review connectors, secrets,
+    and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: spring_boot_helm_pipeline
+    versionLabel: 1.0.0
+    templateInputs:
+      variables:
+      - name: registryHost
+        type: String
+        value: <+input>
+      - name: imageRepo
+        type: String
+        value: <+input>
+      - name: chartName
+        type: String
+        value: <+input>
+      - name: releaseName
+        type: String
+        value: <+input>
+      - name: k8sNamespace
+        type: String
+        value: <+input>
+      - name: javaVersion
+        type: String
+        value: <+input>
+      stages:
+      - stage:
+          identifier: HelmDeploy
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>

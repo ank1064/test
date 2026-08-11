@@ -1,0 +1,63 @@
+inputSet:
+  name: Enterprise ORDERHUB 79550399 - Bamboo Variable Mappings
+  tags: {}
+  identifier: enterprise_orderhub_79550399_bamboo_vars_7b8c3f
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: enterprise_orderhub_79550399
+    template:
+      templateInputs:
+        variables:
+        - name: imageRegistry
+          type: String
+          value: <+input>
+        - name: npmRegistry
+          type: String
+          value: https://registry.npmjs.org/
+        - name: sonarProject
+          type: String
+          value: <+input>
+        - name: helmChart
+          type: String
+          value: <+input>
+        - name: devHealthCheckUrl
+          type: String
+          value: <+input>
+        - name: performanceHealthCheckUrl
+          type: String
+          value: <+input>
+        - name: productionHealthCheckUrl
+          type: String
+          value: <+input>
+        stages:
+        - stage:
+            identifier: DeployDev
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: DeployPerformance
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: DeployProduction
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>

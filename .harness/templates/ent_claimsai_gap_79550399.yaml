@@ -1,0 +1,666 @@
+template:
+  name: Enterprise CLAIMSAI Gap 79550399 - gaps filled for INSURE-CLAIMSAI
+  identifier: spring_boot_helm_pipeline_filled_INSURE_CLAIMSAI
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    fixture: '10'
+    source: bamboo
+    stack: python-mlops
+  description: Gap-filled Harness pipeline for Bamboo plan INSURE-CLAIMSAI, source
+    unit Entire pipeline; cloned from spring_boot_helm_pipeline_filled_BANKING_PAYCORE
+  spec:
+    stages:
+    - stage:
+        name: Environment Setup
+        identifier: EnvironmentSetup
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Create venv and install ML stack
+                identifier: create_venv_install_ml_stack
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    PYTHON_VERSION: <+pipeline.variables.pythonVersion>
+                    TORCH_VERSION: <+pipeline.variables.torchVersion>
+                  command: 'python${PYTHON_VERSION} -m venv .venv && . .venv/bin/activate
+
+                    pip install torch==${TORCH_VERSION} mlflow scikit-learn pandas
+                    bandit
+
+                    nvidia-smi || echo "CPU fallback train allowed in CI"
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Features and Train
+        identifier: FeaturesAndTrain
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Export Training Features
+                identifier: export_training_features
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    FEATURE_STORE_URI: <+pipeline.variables.featureStoreUri>
+                    ARTIFACT_BUCKET: <+pipeline.variables.artifactBucket>
+                  command: '. .venv/bin/activate
+
+                    python pipelines/export_features.py --uri ${FEATURE_STORE_URI}
+                    --out data/features.parquet
+
+                    aws s3 cp data/features.parquet ${ARTIFACT_BUCKET}/features/<+pipeline.sequenceId>/
+
+                    '
+            - step:
+                name: PyTorch Model Train
+                identifier: pytorch_model_train
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    TRAIN_EPOCHS: <+pipeline.variables.trainEpochs>
+                    TRAIN_BATCH_SIZE: <+pipeline.variables.trainBatchSize>
+                    MODEL_NAME: <+pipeline.variables.modelName>
+                    ARTIFACT_BUCKET: <+pipeline.variables.artifactBucket>
+                  command: ". .venv/bin/activate\npython train/train.py \\\n  --epochs\
+                    \ ${TRAIN_EPOCHS} \\\n  --batch-size ${TRAIN_BATCH_SIZE} \\\n\
+                    \  --features data/features.parquet \\\n  --out models/${MODEL_NAME}-<+pipeline.sequenceId>.pt\n\
+                    aws s3 cp models/ ${ARTIFACT_BUCKET}/checkpoints/<+pipeline.sequenceId>/\
+                    \ --recursive\n"
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Evaluate
+        identifier: Evaluate
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Offline Eval and Fairness
+                identifier: offline_eval_fairness
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    MODEL_NAME: <+pipeline.variables.modelName>
+                    FAIRNESS_THRESHOLD: <+pipeline.variables.fairnessThreshold>
+                  command: ". .venv/bin/activate\npython eval/offline_eval.py \\\n\
+                    \  --model models/${MODEL_NAME}-<+pipeline.sequenceId>.pt \\\n\
+                    \  --fairness-threshold ${FAIRNESS_THRESHOLD} \\\n  --report reports/eval.json\n\
+                    FAIRNESS_SCORE=$(python -c \"import json;print(json.load(open('reports/eval.json'))['fairness'])\"\
+                    )\nif [ $(echo \"${FAIRNESS_SCORE} >= ${FAIRNESS_THRESHOLD}\"\
+                    \ | bc -l) -ne 1 ]; then\n  echo \"Fairness check failed: ${FAIRNESS_SCORE}\
+                    \ < ${FAIRNESS_THRESHOLD}\"\n  exit 1\nfi\n"
+            - step:
+                name: Latency Benchmark
+                identifier: latency_bench
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    MODEL_NAME: <+pipeline.variables.modelName>
+                    LATENCY_P99_MS_BUDGET: <+pipeline.variables.latencyP99MsBudget>
+                  command: ". .venv/bin/activate\npython eval/latency_bench.py \\\n\
+                    \  --model models/${MODEL_NAME}-<+pipeline.sequenceId>.pt \\\n\
+                    \  --p99-budget-ms ${LATENCY_P99_MS_BUDGET}\n"
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: STO Security Scans
+        identifier: STOSecurityScans
+        type: SecurityTests
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Bandit
+                name: Bandit Python SAST
+                identifier: bandit_python_sast
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+pipeline.variables.modelName>
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+            - step:
+                type: AquaTrivy
+                name: Trivy Filesystem Scan
+                identifier: trivy_filesystem_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+pipeline.variables.modelName>
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+            - step:
+                type: Sonarqube
+                name: SonarQube Analysis
+                identifier: sonarqube_analysis
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+pipeline.variables.modelName>
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                  auth:
+                    access_token: <+input>
+                  tool:
+                    project_key: <+pipeline.variables.sonarProject>
+            - step:
+                type: Snyk
+                name: Snyk Dependency Scan
+                identifier: snyk_dependency_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+pipeline.variables.modelName>
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+                  auth:
+                    access_token: <+input>
+            - step:
+                type: Gitleaks
+                name: Gitleaks Secret Scan
+                identifier: gitleaks_secret_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+pipeline.variables.modelName>
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Register and Package
+        identifier: RegisterAndPackage
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: MLflow Register Model
+                identifier: mlflow_register_model
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    MLFLOW_TRACKING_URI: <+pipeline.variables.mlflowTrackingUri>
+                    MODEL_NAME: <+pipeline.variables.modelName>
+                    ARTIFACT_BUCKET: <+pipeline.variables.artifactBucket>
+                  command: ". .venv/bin/activate\nexport MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}\n\
+                    python pipelines/register_model.py \\\n  --name ${MODEL_NAME}\
+                    \ \\\n  --artifact models/${MODEL_NAME}-<+pipeline.sequenceId>.pt\
+                    \ \\\n  --run-name harness-<+pipeline.sequenceId>\naws s3 cp reports/eval.json\
+                    \ ${ARTIFACT_BUCKET}/eval/<+pipeline.sequenceId>/\n"
+            - step:
+                name: Build Runtime Container
+                identifier: build_runtime_container
+                type: BuildAndPushDockerRegistry
+                spec:
+                  connectorRef: <+input>
+                  repo: <+pipeline.variables.runtimeImageRegistry>
+                  tags:
+                  - <+pipeline.sequenceId>
+                  buildArgs:
+                    MODEL_PATH: models/<+pipeline.variables.modelName>-<+pipeline.sequenceId>.pt
+                  dockerfile: serving/Dockerfile
+                  context: serving/
+                  caching: true
+            - step:
+                name: Helm Lint and Package
+                identifier: helm_lint_package
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'helm lint <+pipeline.variables.helmChart>
+
+                    helm package <+pipeline.variables.helmChart> --version <+pipeline.sequenceId>
+                    -d packaged/
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Container Image Scan
+        identifier: ContainerImageScan
+        type: SecurityTests
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: AquaTrivy
+                name: Trivy Image Scan
+                identifier: trivy_image_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: container
+                    detection: auto
+                    name: <+pipeline.variables.modelName>
+                    variant: <+pipeline.sequenceId>
+                  image:
+                    type: docker_v2
+                    name: <+pipeline.variables.runtimeImageRegistry>
+                    tag: <+pipeline.sequenceId>
+                    domain: <+input>
+                    access_token: <+input>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: critical
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: ML Champion Gate
+        identifier: MLChampionGate
+        type: Approval
+        spec:
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: ML Champion Approval
+                identifier: ml_champion_approval
+                spec:
+                  approvalMessage: ML Gateway model <+pipeline.sequenceId> is ready
+                    for Helm CD deployment. Please review and approve to proceed with
+                    dev, qa, and production deployment.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups: <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                timeout: 1d
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy sandbox
+        identifier: DeploySandbox
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Sandbox
+                identifier: helmDeploySandbox
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                timeout: 15m
+            - step:
+                type: Http
+                name: Sandbox Health Check
+                identifier: sandbox_health_check
+                spec:
+                  url: <+pipeline.variables.sandboxHealthCheckUrl>
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                  headers: []
+                timeout: 2m
+            - step:
+                type: ShellScript
+                name: Sandbox Deployment Verification
+                identifier: sandbox_deployment_verification
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'echo "Sandbox deployment verification for <+pipeline.sequenceId>"
+
+                        echo "Verifying deployment health..."
+
+                        '
+                  environmentVariables: []
+                  outputVariables: []
+                timeout: 10m
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Sandbox
+                identifier: helmRollbackSandbox
+                spec: {}
+                timeout: 15m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy uat
+        identifier: DeployUat
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: UAT Approval
+                identifier: uat_approval
+                spec:
+                  approvalMessage: Approve canary deployment to UAT environment.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups: <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                timeout: 1d
+            - step:
+                type: K8sCanaryDeploy
+                name: Canary Deploy UAT
+                identifier: canaryDeployUat
+                spec:
+                  skipDryRun: false
+                  instanceSelection:
+                    type: Count
+                    spec:
+                      count: 1
+                timeout: 10m
+            - step:
+                type: Http
+                name: UAT Canary Health Check
+                identifier: uat_canary_health_check
+                spec:
+                  url: <+pipeline.variables.uatHealthCheckUrl>
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                  headers: []
+                timeout: 2m
+            - step:
+                type: K8sCanaryDelete
+                name: Canary Delete UAT
+                identifier: canaryDeleteUat
+                spec: {}
+                timeout: 10m
+            - step:
+                type: K8sRollingDeploy
+                name: Rolling Deploy UAT
+                identifier: rollingDeployUat
+                spec:
+                  skipDryRun: false
+                  pruningEnabled: false
+                timeout: 10m
+            rollbackSteps:
+            - step:
+                type: K8sCanaryDelete
+                name: Canary Delete Rollback
+                identifier: canaryDeleteRollback
+                spec: {}
+                timeout: 10m
+            - step:
+                type: K8sRollingRollback
+                name: Rolling Rollback UAT
+                identifier: rollingRollbackUat
+                spec: {}
+                timeout: 10m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy production
+        identifier: DeployProduction
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: Production Approval
+                identifier: production_approval
+                spec:
+                  approvalMessage: Approve deployment to production environment.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups: <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                timeout: 1d
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Production
+                identifier: helmDeployProduction
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                timeout: 15m
+            - step:
+                type: Http
+                name: Production Health Check
+                identifier: production_health_check
+                spec:
+                  url: <+pipeline.variables.productionHealthCheckUrl>
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                  headers: []
+                timeout: 2m
+            - step:
+                type: ShellScript
+                name: Production Deployment Verification
+                identifier: production_deployment_verification
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'echo "Production deployment verification for <+pipeline.sequenceId>"
+
+                        echo "Verifying deployment health..."
+
+                        '
+                  environmentVariables: []
+                  outputVariables: []
+                timeout: 15m
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Production
+                identifier: helmRollbackProduction
+                spec: {}
+                timeout: 15m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    variables:
+    - name: modelName
+      type: String
+      value: <+input>
+      default: workday-inference-gateway
+    - name: modelFramework
+      type: String
+      value: pytorch
+    - name: mlflowTrackingUri
+      type: String
+      value: <+input>
+    - name: featureStoreUri
+      type: String
+      value: <+input>
+    - name: runtimeImageRegistry
+      type: String
+      value: <+input>
+    - name: helmChart
+      type: String
+      value: <+input>
+      default: ./helm/ml-inference-gateway
+    - name: trainEpochs
+      type: String
+      value: <+input>
+      default: '3'
+    - name: trainBatchSize
+      type: String
+      value: <+input>
+      default: '64'
+    - name: latencyP99MsBudget
+      type: String
+      value: <+input>
+      default: '120'
+    - name: fairnessThreshold
+      type: String
+      value: <+input>
+      default: '0.8'
+    - name: sonarProject
+      type: String
+      value: <+input>
+    - name: artifactBucket
+      type: String
+      value: <+input>
+    - name: pythonVersion
+      type: String
+      value: '3.11'
+    - name: torchVersion
+      type: String
+      value: 2.3.0
+    - name: sandboxHealthCheckUrl
+      type: String
+      value: <+input>
+    - name: uatHealthCheckUrl
+      type: String
+      value: <+input>
+    - name: productionHealthCheckUrl
+      type: String
+      value: <+input>

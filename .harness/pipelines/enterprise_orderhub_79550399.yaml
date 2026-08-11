@@ -1,0 +1,66 @@
+pipeline:
+  name: Enterprise ORDERHUB 79550399
+  identifier: enterprise_orderhub_79550399
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Enterprise ORDERHUB 79550399. Review connectors,
+    secrets, and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: spring_boot_helm_pipeline_filled_RETAIL_ORDERHUB
+    versionLabel: v1
+    gitBranch: ank1064-patch-1
+    templateInputs:
+      variables:
+      - name: imageRegistry
+        type: String
+        value: <+input>
+      - name: npmRegistry
+        type: String
+        value: <+input>
+      - name: sonarProject
+        type: String
+        value: <+input>
+      - name: helmChart
+        type: String
+        value: <+input>
+      - name: devHealthCheckUrl
+        type: String
+        value: <+input>
+      - name: performanceHealthCheckUrl
+        type: String
+        value: <+input>
+      - name: productionHealthCheckUrl
+        type: String
+        value: <+input>
+      stages:
+      - stage:
+          identifier: DeployDev
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: DeployPerformance
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: DeployProduction
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>

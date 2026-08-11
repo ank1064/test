@@ -1,0 +1,21 @@
+inputSet:
+  name: Enterprise MSETV2 91416501 - Bamboo Variable Mappings
+  tags: {}
+  identifier: enterprise_msetv2_91416501_bamboo_vars_7bb380
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: enterprise_msetv2_91416501
+    template:
+      templateInputs:
+        stages:
+        - stage:
+            identifier: deploy_to_uat
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>

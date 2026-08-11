@@ -1,0 +1,64 @@
+inputSet:
+  name: Enterprise ZTNAV2 89728238 - Bamboo Variable Mappings
+  tags: {}
+  identifier: enterprise_ztnav2_89728238_bamboo_vars_7bb007
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: enterprise_ztnav2_89728238
+    template:
+      templateInputs:
+        variables:
+        - name: IMAGE_REGISTRY
+          type: String
+          value: <+input>
+        - name: OPA_BUNDLE
+          type: String
+          value: <+input>
+        properties:
+          ci:
+            codebase:
+              connectorRef: <+input>
+              repoName: <+input>
+              build: <+input>
+        stages:
+        - stage:
+            identifier: deploy_security_dev
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: deploy_red_team
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: progressive_deployment_production
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: emergency_drill_execution
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>

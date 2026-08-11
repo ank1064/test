@@ -1,0 +1,97 @@
+pipeline:
+  name: WD WFP 75187362
+  identifier: wd_wfp_75187362
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: WD WFP 75187362. Review connectors, secrets, and
+    runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: py_flask_ci_pipeline_v1
+    versionLabel: v1
+    templateInputs:
+      variables:
+      - name: registry_url
+        type: String
+        value: <+input>
+      - name: image_name
+        type: String
+        value: <+input>
+      - name: ENVIRONMENT
+        type: String
+        value: <+input>
+      - name: SLACK_WEBHOOK
+        type: String
+        value: <+input>
+      stages:
+      - stage:
+          identifier: build
+          template:
+            templateInputs:
+              type: CI
+              spec:
+                execution:
+                  steps:
+                  - step:
+                      template:
+                        templateInputs:
+                          spec:
+                            connectorRef: <+input>
+                            envVariables:
+                              PIP_INDEX_URL: <+input>
+                  - step:
+                      spec:
+                        connectorRef: <+input>
+          spec:
+            execution:
+              steps:
+              - step:
+                  identifier: install_deps
+                  template:
+                    templateInputs:
+                      type: Run
+                      spec:
+                        envVariables:
+                          PIP_INDEX_URL: <+input>
+      - stage:
+          identifier: test
+          template:
+            templateInputs:
+              type: CI
+              spec:
+                execution:
+                  steps:
+                  - step:
+                      template:
+                        templateInputs:
+                          spec:
+                            connectorRef: <+input>
+                            envVariables:
+                              PYTEST_ARGS: <+input>
+          spec:
+            execution:
+              steps:
+              - step:
+                  identifier: unit_tests
+                  template:
+                    templateInputs:
+                      type: Run
+                      spec:
+                        envVariables:
+                          PYTEST_ARGS: <+input>
+      - stage:
+          identifier: package
+          template:
+            templateInputs:
+              type: CI
+              spec:
+                execution:
+                  steps:
+                  - step:
+                      template:
+                        templateInputs:
+                          spec:
+                            connectorRef: <+input>
+                            repo: <+input>
+                            tags:
+                            - <+input>

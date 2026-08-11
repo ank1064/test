@@ -1,0 +1,53 @@
+template:
+  name: Enterprise MFSETTLE Gap 85840960 - gaps filled for FINANCE-MFSETTLE
+  identifier: e2em_20260512_082541_2_templates_hel_filled_FINANCE_MFSETTLE
+  versionLabel: v1
+  type: StepGroup
+  tags:
+    source: ado-mapper
+  spec:
+    stageType: Deployment
+    steps:
+    - step:
+        type: HelmDeploy
+        name: Helm Deploy
+        identifier: helm_deploy
+        spec:
+          skipDryRun: false
+          ignoreReleaseHistFailStatus: false
+        timeout: 10m
+    - step:
+        type: ShellScript
+        name: Verify Rollout
+        identifier: verify_rollout
+        spec:
+          shell: Bash
+          onDelegate: true
+          source:
+            type: Inline
+            spec:
+              script: 'set -euo pipefail
+
+                kubectl rollout status deployment/<+service.name> --namespace <+infra.namespace>
+                --timeout=300s
+
+                '
+        timeout: 10m
+    - step:
+        type: ShellScript
+        name: Smoke Test
+        identifier: smoke_test
+        spec:
+          shell: Bash
+          onDelegate: true
+          source:
+            type: Inline
+            spec:
+              script: 'set -euo pipefail
+
+                curl -fsS https://<+service.name>-<+env.name>.example.com/health
+
+                '
+        timeout: 10m
+  description: Gap-filled Harness stepGroup for Bamboo plan FINANCE-MFSETTLE, source
+    unit uat; cloned from e2em_20260512_082541_2_templates_helm_deploy_yml_self

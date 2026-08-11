@@ -1,0 +1,50 @@
+inputSet:
+  name: WD WFP 73944562 - Bamboo Variable Mappings
+  tags: {}
+  identifier: wd_wfp_73944562_bamboo_vars_7b72b3
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: wd_wfp_73944562
+    template:
+      templateInputs:
+        variables:
+        - name: registry_url
+          type: String
+          value: https://index.docker.io/v1/
+        - name: image_name
+          type: String
+          value: <+input>
+        - name: ENVIRONMENT
+          type: String
+          value: production
+        - name: SLACK_WEBHOOK
+          type: String
+          value: <+input>
+        stages:
+        - stage:
+            identifier: build
+            spec:
+              execution:
+                steps:
+                - step:
+                    identifier: install_deps
+                    template:
+                      templateInputs:
+                        type: Run
+                        spec:
+                          envVariables:
+                            PIP_INDEX_URL: <+input>
+        - stage:
+            identifier: test
+            spec:
+              execution:
+                steps:
+                - step:
+                    identifier: unit_tests
+                    template:
+                      templateInputs:
+                        type: Run
+                        spec:
+                          envVariables:
+                            PYTEST_ARGS: <+input>

@@ -1,0 +1,400 @@
+template:
+  name: Enterprise MFSETTLE Gap 79550399 - gaps filled for FINANCE-MFSETTLE
+  identifier: demo_mapper_build_sto_starter_filled_FINANCE_MFSETTLE
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    mapper_demo: 'true'
+    role: starter
+  description: Gap-filled Harness pipeline for Bamboo plan FINANCE-MFSETTLE, source
+    unit Entire pipeline; cloned from demo_mapper_build_sto_starter_filled
+  spec:
+    stages:
+    - stage:
+        name: Build
+        identifier: build
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Compile
+                identifier: compile
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'echo "Mapper demo build..."
+
+                    make build
+
+                    '
+            - step:
+                name: Unit Tests
+                identifier: unit_tests
+                type: RunTests
+                spec:
+                  language: Java
+                  buildTool: Maven
+                  args: test
+                  runOnlySelectedTests: false
+                  reports:
+                    type: JUnit
+                    spec:
+                      paths:
+                      - '**/target/surefire-reports/*.xml'
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: SBOM Generation
+        identifier: sbom_generation
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: CycloneDX SBOM
+                identifier: cyclonedx_sbom
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'echo "Generating CycloneDX SBOM..."
+
+                    mvn cyclonedx:makeBom -DoutputFormat=json -DoutputName=sbom
+
+                    '
+            - step:
+                name: Syft SBOM
+                identifier: syft_sbom
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'echo "Generating Syft SBOM..."
+
+                    syft target/*.jar -o cyclonedx-json=syft-sbom.json
+
+                    '
+                  connectorRef: <+input>
+                  image: anchore/syft:latest
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Vulnerability Scan
+        identifier: vulnerability_scan
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Grype Scan
+                identifier: grype_scan
+                type: Grype
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: container
+                    detection: auto
+                    name: <+input>
+                    variant: <+input>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: critical
+                  privileged: true
+                  image:
+                    type: docker_v2
+                    name: <+input>
+                    tag: <+input>
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: SLSA Attestation
+        identifier: slsa_attestation
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: SLSA Provenance
+                identifier: slsa_provenance
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'echo "Generating SLSA provenance attestation..."
+
+                    cosign attest --key <+input> --type slsaprovenance <+input>
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: STO Scan
+        identifier: sto_scan
+        type: SecurityTests
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Gitleaks
+                identifier: gitleaks
+                type: Gitleaks
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+input>
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+            - step:
+                name: Sonarqube
+                identifier: sonarqube
+                type: Sonarqube
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+input>
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                  auth:
+                    access_token: <+input>
+                    domain: <+input>
+            - step:
+                name: AquaTrivy
+                identifier: aqua_trivy
+                type: AquaTrivy
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+input>
+                    type: container
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                  image:
+                    type: docker_v2
+                    name: <+input>
+                    tag: <+input>
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy UAT
+        identifier: deploy_uat
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Deploy
+                identifier: helm_deploy
+                type: HelmDeploy
+                timeout: 10m
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                  skipDryRun: false
+            - step:
+                name: Verify Rollout
+                identifier: verify_rollout
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  onDelegate: true
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'kubectl rollout status deployment/app --namespace settlement-uat
+                        --timeout=300s
+
+                        '
+            - step:
+                name: Smoke Test
+                identifier: smoke_test
+                type: ShellScript
+                timeout: 2m
+                spec:
+                  shell: Bash
+                  onDelegate: true
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'curl -fsS https://app-settlement-uat.example.com/health
+
+                        '
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: helm_rollback
+                type: HelmRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy Production
+        identifier: deploy_production
+        type: Deployment
+        spec:
+          deploymentType: Ssh
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Production Approval
+                identifier: production_approval
+                type: HarnessApproval
+                timeout: 1d
+                spec:
+                  approvalMessage: Please review and approve production deployment
+                    for Mainframe Settlement
+                  includePipelineExecutionHistory: true
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 2
+                    disallowPipelineExecutor: true
+                  approverInputs: []
+            - step:
+                name: Deploy via SSH
+                identifier: deploy_via_ssh
+                type: ShellScript
+                timeout: 10m
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: <+input>
+                  environmentVariables: []
+                  outputVariables: []
+            - step:
+                name: Smoke Settlement
+                identifier: smoke_settlement
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: <+input>
+                  environmentVariables: []
+                  outputVariables: []
+            - step:
+                name: Reconcile Ledger
+                identifier: reconcile_ledger
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: <+input>
+                  environmentVariables: []
+                  outputVariables: []
+            rollbackSteps:
+            - step:
+                name: Rollback Check
+                identifier: rollback_check
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  executionTarget: {}
+                  source:
+                    type: Inline
+                    spec:
+                      script: <+input>
+                  environmentVariables: []
+                  outputVariables: []
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback

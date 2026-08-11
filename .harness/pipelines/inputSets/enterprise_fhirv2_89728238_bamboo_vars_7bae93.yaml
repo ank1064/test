@@ -1,0 +1,76 @@
+inputSet:
+  name: Enterprise FHIRV2 89728238 - Bamboo Variable Mappings
+  tags: {}
+  identifier: enterprise_fhirv2_89728238_bamboo_vars_7bae93
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: enterprise_fhirv2_89728238
+    template:
+      templateInputs:
+        variables:
+        - name: imageRegistry
+          type: String
+          value: <+input>
+        - name: helmChart
+          type: String
+          value: <+input>
+        - name: fhirProfile
+          type: String
+          value: <+input>
+        - name: dastTarget
+          type: String
+          value: <+input>
+        - name: sonarProject
+          type: String
+          value: <+input>
+        - name: integrationHealthCheckUrl
+          type: String
+          value: <+input>
+        - name: clinicalUatHealthCheckUrl
+          type: String
+          value: <+input>
+        - name: productionHealthCheckUrl
+          type: String
+          value: <+input>
+        stages:
+        - stage:
+            identifier: DeployIntegration
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: DeployClinicalUAT
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: ProductionBlueGreenDeployment
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: DeployAuditCanary
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>

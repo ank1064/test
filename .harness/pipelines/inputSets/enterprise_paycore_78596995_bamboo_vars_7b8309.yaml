@@ -1,0 +1,84 @@
+inputSet:
+  name: Enterprise PAYCORE 78596995 - Bamboo Variable Mappings
+  tags: {}
+  identifier: enterprise_paycore_78596995_bamboo_vars_7b8309
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: enterprise_paycore_78596995
+    template:
+      templateInputs:
+        variables:
+        - name: modelName
+          type: String
+          value: <+input>
+        - name: mlflowTrackingUri
+          type: String
+          value: <+input>
+        - name: featureStoreUri
+          type: String
+          value: <+input>
+        - name: runtimeImageRegistry
+          type: String
+          value: <+input>
+        - name: helmChart
+          type: String
+          value: <+input>
+        - name: trainEpochs
+          type: String
+          value: '10'
+        - name: trainBatchSize
+          type: String
+          value: '32'
+        - name: latencyP99MsBudget
+          type: String
+          value: '100'
+        - name: fairnessThreshold
+          type: String
+          value: '0.8'
+        - name: sonarProject
+          type: String
+          value: <+input>
+        - name: artifactBucket
+          type: String
+          value: <+input>
+        - name: devHealthCheckUrl
+          type: String
+          value: <+input>
+        - name: qaHealthCheckUrl
+          type: String
+          value: <+input>
+        - name: productionHealthCheckUrl
+          type: String
+          value: <+input>
+        stages:
+        - stage:
+            identifier: DeployDev
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: DeployQa
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: DeployProduction
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>

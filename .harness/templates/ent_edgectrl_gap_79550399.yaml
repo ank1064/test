@@ -1,0 +1,142 @@
+template:
+  name: Enterprise EDGECTRL Gap 79550399 - gaps filled for IOT-EDGECTRL
+  identifier: demo_mapper_build_sto_starter_filled_IOT_EDGECTRL
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    mapper_demo: 'true'
+    role: starter
+  description: Gap-filled Harness pipeline for Bamboo plan IOT-EDGECTRL, source unit
+    Entire pipeline; cloned from demo_mapper_build_sto_starter_filled_SUPPLY_SBOMGATE
+  spec:
+    stages:
+    - stage:
+        name: Build
+        identifier: build
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Build Docker Image
+                identifier: build_docker_image
+                type: BuildAndPushDockerRegistry
+                spec:
+                  connectorRef: <+input>
+                  repo: <+input>
+                  tags:
+                  - <+pipeline.sequenceId>
+                  caching: true
+                  dockerfile: Dockerfile
+                  context: .
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: SBOM Generation
+        identifier: sbom_generation
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Syft SBOM
+                identifier: syft_sbom
+                type: Plugin
+                spec:
+                  connectorRef: account.harnessImage
+                  image: anchore/syft:v1.4.1
+                  settings:
+                    target: <+input>
+                    output: spdx-json=sbom.spdx.json
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Vulnerability Scan
+        identifier: vulnerability_scan
+        type: SecurityTests
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Grype SBOM Scan
+                identifier: grype_sbom_scan
+                type: Grype
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: edge-controller
+                    type: container
+                    variant: <+pipeline.sequenceId>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+                  sbom:
+                    source: file
+                    file: sbom.spdx.json
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Push to Registry
+        identifier: push_to_registry
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Push Image
+                identifier: push_image
+                type: BuildAndPushDockerRegistry
+                spec:
+                  connectorRef: <+input>
+                  repo: registry.example.com/scanned-app
+                  tags:
+                  - <+pipeline.sequenceId>
+                  caching: true
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure

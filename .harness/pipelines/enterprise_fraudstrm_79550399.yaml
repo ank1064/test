@@ -1,0 +1,90 @@
+pipeline:
+  name: Enterprise FRAUDSTRM 79550399
+  identifier: enterprise_fraudstrm_79550399
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Enterprise FRAUDSTRM 79550399. Review connectors,
+    secrets, and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: spring_boot_helm_pipeline_filled_BANKING_FRAUDSTRM
+    versionLabel: v1
+    gitBranch: ank1064-patch-1
+    templateInputs:
+      variables:
+      - name: modelName
+        type: String
+        value: <+input>
+      - name: mlflowTrackingUri
+        type: String
+        value: <+input>
+      - name: featureStoreUri
+        type: String
+        value: <+input>
+      - name: runtimeImageRegistry
+        type: String
+        value: <+input>
+      - name: helmChart
+        type: String
+        value: <+input>
+      - name: trainEpochs
+        type: String
+        value: <+input>
+      - name: trainBatchSize
+        type: String
+        value: <+input>
+      - name: latencyP99MsBudget
+        type: String
+        value: <+input>
+      - name: fairnessThreshold
+        type: String
+        value: <+input>
+      - name: sonarProject
+        type: String
+        value: <+input>
+      - name: artifactBucket
+        type: String
+        value: <+input>
+      - name: integrationHealthCheckUrl
+        type: String
+        value: <+input>
+      - name: modelValidationHealthCheckUrl
+        type: String
+        value: <+input>
+      - name: productionHealthCheckUrl
+        type: String
+        value: <+input>
+      - name: driftThreshold
+        type: String
+        value: <+input>
+      stages:
+      - stage:
+          identifier: DeployIntegration
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: DeployModelValidation
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: DeployProductionBlueGreen
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>

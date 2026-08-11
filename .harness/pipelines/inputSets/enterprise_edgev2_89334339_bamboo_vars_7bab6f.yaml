@@ -1,0 +1,47 @@
+inputSet:
+  name: Enterprise EDGEV2 89334339 - Bamboo Variable Mappings
+  tags: {}
+  identifier: enterprise_edgev2_89334339_bamboo_vars_7bab6f
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: enterprise_edgev2_89334339
+    template:
+      templateInputs:
+        properties:
+          ci:
+            codebase:
+              connectorRef: <+input>
+              repoName: <+input>
+              build: <+input>
+        stages:
+        - stage:
+            identifier: deploy_hil_lab
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: deploy_pilot_fleet
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: deploy_production_fleet
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>

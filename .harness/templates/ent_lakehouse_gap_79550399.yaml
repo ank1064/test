@@ -1,0 +1,549 @@
+template:
+  name: Enterprise LAKEHOUSE Gap 79550399 - gaps filled for DATA-LAKEHOUSE
+  identifier: py_flask_ci_pipeline_v1_filled_DATA_LAKEHOUSE
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    ci: ''
+    python: ''
+    pipeline: ''
+  description: Gap-filled Harness pipeline for Bamboo plan DATA-LAKEHOUSE, source
+    unit Entire pipeline; cloned from py_flask_ci_pipeline_v1
+  spec:
+    stages:
+    - stage:
+        name: Build Spark Jobs
+        identifier: build_spark_jobs
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Compile Scala Spark Jobs
+                identifier: compile_scala_spark
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("gradle:8-jdk17")
+                  shell: Sh
+                  command: ./gradlew clean shadowJar
+            - step:
+                type: Run
+                name: Package Python Transforms
+                identifier: package_python_transforms
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("python:3.12-slim")
+                  shell: Sh
+                  command: 'pip install poetry
+
+                    poetry build
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Validate Transformations
+        identifier: validate_transformations
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Pytest Transformation Tests
+                identifier: pytest_transforms
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("python:3.12-slim")
+                  shell: Sh
+                  command: 'pip install poetry
+
+                    poetry install
+
+                    poetry run pytest transforms/tests --cov
+
+                    '
+            - step:
+                type: Run
+                name: dbt Build and Snapshots
+                identifier: dbt_build
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("ghcr.io/dbt-labs/dbt-core:1.7-latest")
+                  shell: Sh
+                  command: dbt build --target <+pipeline.variables.DBT_TARGET>
+            - step:
+                type: Run
+                name: SQLFluff Warehouse Lint
+                identifier: sqlfluff_lint
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("python:3.12-slim")
+                  shell: Sh
+                  command: 'pip install sqlfluff
+
+                    sqlfluff lint models
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Data Contract Tests
+        identifier: data_contract_tests
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Validate Protobuf Schemas
+                identifier: buf_lint
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("bufbuild/buf:latest")
+                  shell: Sh
+                  command: buf lint contracts
+            - step:
+                type: Run
+                name: Check Backwards Compatibility
+                identifier: check_compatibility
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("bash:5")
+                  shell: Sh
+                  command: ./contracts/check-compatibility.sh
+            - step:
+                type: Run
+                name: Great Expectations Quality Suite
+                identifier: great_expectations
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("python:3.12-slim")
+                  shell: Sh
+                  command: 'pip install great_expectations
+
+                    great_expectations checkpoint run enterprise_lakehouse
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Security and Governance
+        identifier: security_governance
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Checkov
+                name: Checkov IaC Scan
+                identifier: checkov_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+input>
+                    variant: <+input>
+                  advanced:
+                    log:
+                      level: info
+            - step:
+                type: AquaTrivy
+                name: Trivy Filesystem Scan
+                identifier: trivy_fs_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+input>
+                    variant: <+input>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: critical
+                  privileged: true
+                  imagePullPolicy: Always
+            - step:
+                type: Run
+                name: Validate Data Classification
+                identifier: data_classification
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("python:3.12-slim")
+                  shell: Sh
+                  command: python governance/classification_gate.py
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Provision Lakehouse
+        identifier: provision_lakehouse
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Terraform Plan
+                identifier: terraform_plan
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("hashicorp/terraform:1.6")
+                  shell: Sh
+                  command: 'cd infra
+
+                    terraform init
+
+                    terraform workspace select <+pipeline.variables.TF_WORKSPACE>
+
+                    terraform plan -out=lakehouse.tfplan
+
+                    '
+            - step:
+                type: Run
+                name: OPA Terraform Policies
+                identifier: opa_conftest
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>.default("openpolicyagent/conftest:latest")
+                  shell: Sh
+                  command: 'cd infra
+
+                    terraform show -json lakehouse.tfplan > lakehouse.tfplan.json
+
+                    conftest test lakehouse.tfplan.json
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Publish Runtime
+        identifier: publish_runtime
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: BuildAndPushDockerRegistry
+                name: Build and Push Spark Job Image
+                identifier: build_push_spark_image
+                spec:
+                  connectorRef: <+input>
+                  repo: <+pipeline.variables.IMAGE_REGISTRY>
+                  tags:
+                  - <+pipeline.sequenceId>
+            - step:
+                type: S3Upload
+                name: Publish dbt Artifacts
+                identifier: publish_dbt_artifacts
+                spec:
+                  connectorRef: <+input>
+                  region: <+input>
+                  bucket: lakehouse-dbt-artifacts
+                  sourcePath: target/
+                  target: <+pipeline.sequenceId>/
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy dev
+        identifier: deploy_dev
+        description: Helm deploy to dev environment
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Dev
+                identifier: helm_deploy_dev
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                  skipDryRun: false
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Verify Rollout
+                identifier: verify_rollout_dev
+                spec:
+                  shell: Bash
+                  onDelegate: true
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace data-dev
+                        --timeout=300s
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Smoke Test
+                identifier: smoke_test_dev
+                spec:
+                  shell: Bash
+                  onDelegate: true
+                  source:
+                    type: Inline
+                    spec:
+                      script: curl -fsS https://app-data-dev.example.com/health
+                timeout: 10m
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Dev
+                identifier: helm_rollback_dev
+                spec: {}
+                timeout: 10m
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy preproduction
+        identifier: deploy_preproduction
+        description: Helm deploy to preproduction environment
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Preproduction
+                identifier: helm_deploy_preproduction
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                  skipDryRun: false
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Verify Rollout
+                identifier: verify_rollout_preproduction
+                spec:
+                  shell: Bash
+                  onDelegate: true
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace preproduction
+                        --timeout=300s
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Smoke Test
+                identifier: smoke_test_preproduction
+                spec:
+                  shell: Bash
+                  onDelegate: true
+                  source:
+                    type: Inline
+                    spec:
+                      script: curl -fsS https://app-preproduction.example.com/health
+                timeout: 10m
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Preproduction
+                identifier: helm_rollback_preproduction
+                spec: {}
+                timeout: 10m
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy production
+        identifier: deploy_production
+        description: Helm deploy to production environment with approval gate
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: Production Approval
+                identifier: production_approval
+                spec:
+                  approvalMessage: Please review and approve the production deployment
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                  approverInputs: []
+                timeout: 1d
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Production
+                identifier: helm_deploy_production
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                  skipDryRun: false
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Verify Rollout
+                identifier: verify_rollout_production
+                spec:
+                  shell: Bash
+                  onDelegate: true
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace production
+                        --timeout=300s
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Run Data Quality SLO
+                identifier: quality_slo_production
+                spec:
+                  shell: Bash
+                  onDelegate: true
+                  source:
+                    type: Inline
+                    spec:
+                      script: ./ops/quality-slo.sh --minimum <+pipeline.variables.QUALITY_SCORE>
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Smoke Test
+                identifier: smoke_test_production
+                spec:
+                  shell: Bash
+                  onDelegate: true
+                  source:
+                    type: Inline
+                    spec:
+                      script: curl -fsS https://app-production.example.com/health
+                timeout: 10m
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Production
+                identifier: helm_rollback_production
+                spec: {}
+                timeout: 10m
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    variables:
+    - name: IMAGE_REGISTRY
+      type: String
+      value: <+input>.default("ghcr.io/acme-data/lakehouse-jobs")
+      description: Docker image registry for Spark job images.
+    - name: DBT_TARGET
+      type: String
+      value: <+input>.default("ci")
+      description: dbt target environment for build.
+    - name: TF_WORKSPACE
+      type: String
+      value: <+input>.default("lakehouse-prod")
+      description: Terraform workspace for lakehouse provisioning.
+    - name: QUALITY_SCORE
+      type: String
+      value: <+input>.default("0.98")
+      description: Minimum data quality SLO threshold.

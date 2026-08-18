@@ -1,0 +1,15 @@
+template:
+  name: Step Tpl final160048
+  identifier: Step_Tpl_final160048
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  versionLabel: v1
+  type: Step
+  description: Extracted from pipeline 'DEMO / REMOTE-TEMPLATIZE'.
+  spec:
+    type: Run
+    spec:
+      connectorRef: <+input>
+      image: <+input>
+      shell: Sh
+      command: mvn -B -DskipTests package

@@ -1,0 +1,28 @@
+template:
+  name: Stage Tpl e2e140428
+  identifier: Stage_Tpl_e2e140428
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  versionLabel: v1
+  type: Stage
+  description: Extracted from pipeline 'DEMO / REMOTE-TEMPLATIZE'.
+  spec:
+    type: CI
+    spec:
+      cloneCodebase: false
+      infrastructure:
+        type: KubernetesDirect
+        spec:
+          connectorRef: <+input>
+          namespace: <+input>
+      execution:
+        steps:
+        - step:
+            name: Build and Push
+            identifier: build_and_push
+            type: BuildAndPushDockerRegistry
+            spec:
+              connectorRef: <+input>
+              repo: <+input>
+              tags:
+              - <+input>

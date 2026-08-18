@@ -1,0 +1,29 @@
+template:
+  name: Group Tpl final160048
+  identifier: Group_Tpl_final160048
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  versionLabel: v1
+  type: StepGroup
+  description: Extracted from pipeline 'DEMO / REMOTE-TEMPLATIZE'.
+  spec:
+    stageType: CI
+    steps:
+    - step:
+        name: Unit Tests
+        identifier: unit_tests
+        type: Run
+        spec:
+          connectorRef: <+input>
+          image: <+input>
+          shell: Sh
+          command: mvn -B test
+    - step:
+        name: Lint
+        identifier: lint
+        type: Run
+        spec:
+          connectorRef: <+input>
+          image: <+input>
+          shell: Sh
+          command: mvn -B checkstyle:check

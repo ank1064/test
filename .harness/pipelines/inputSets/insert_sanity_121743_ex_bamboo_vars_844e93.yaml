@@ -1,0 +1,35 @@
+inputSet:
+  name: Insert Sanity 121743_ex - Bamboo Variable Mappings
+  tags: {}
+  identifier: insert_sanity_121743_ex_bamboo_vars_844e93
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: insert_sanity_121743_ex
+    template:
+      templateInputs:
+        stages:
+        - stage:
+            identifier: prepare
+            type: CI
+            spec:
+              infrastructure:
+                spec:
+                  connectorRef: <+input>
+                  namespace: <+input>
+        - stage:
+            identifier: build
+            type: CI
+            spec:
+              infrastructure:
+                spec:
+                  connectorRef: <+input>
+                  namespace: <+input>
+        - stage:
+            identifier: test
+            type: CI
+            spec:
+              infrastructure:
+                spec:
+                  connectorRef: <+input>
+                  namespace: <+input>

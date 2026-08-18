@@ -1,0 +1,43 @@
+pipeline:
+  name: Insert Sanity 123035_pr
+  identifier: insert_sanity_123035_pr
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Insert Sanity 123035_pr. Review connectors, secrets,
+    and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: demo_mapper_build_sto_starter_filled_DEMO_CISTO70
+    versionLabel: v1
+    templateInputs:
+      stages:
+      - stage:
+          identifier: prepare
+          type: CI
+          spec:
+            infrastructure:
+              spec:
+                connectorRef: <+input>
+                namespace: <+input>
+      - stage:
+          identifier: build
+          type: CI
+          spec:
+            infrastructure:
+              spec:
+                connectorRef: <+input>
+                namespace: <+input>
+      - stage:
+          identifier: test
+          type: CI
+          spec:
+            infrastructure:
+              spec:
+                connectorRef: <+input>
+                namespace: <+input>
+
+# Migration TODOs (unresolved recommendation gaps)
+# TODO: Complex CI STO Gap Fill 70: Missing build coverage for Bamboo task 'Maven compile' (stage Build) [maven]
+# TODO: Complex CI STO Gap Fill 70: Missing other coverage for Bamboo task 'artifact-download' (stage Security)
+# TODO: Complex CI STO Gap Fill 70: Bamboo uses Maven compile (mvn -B clean compile); template uses generic 'make build' without Maven tool evidence
+# TODO: Complex CI STO Gap Fill 70: No artifact-download step in template

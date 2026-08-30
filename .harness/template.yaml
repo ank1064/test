@@ -1,0 +1,535 @@
+template:
+  name: Microservices Fan-out Pipeline - gaps filled for WORKDAY-FINCLOSE
+  identifier: microservices_fanout_pipeline_filled_WORKDAY_FINCLOSE
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    source: bamboo
+    fixture: '04'
+  spec:
+    description: Workday Financials Close pipeline migrated from Bamboo - complex
+      CI + multi-env CD for financials period-close orchestration with native STO
+      security scanning and Terraform infrastructure management.
+    variables:
+    - name: javaVersion
+      type: String
+      value: <+input>
+    - name: mavenOpts
+      type: String
+      value: <+input>
+    - name: registryNamespace
+      type: String
+      value: <+input>
+    - name: imageTag
+      type: String
+      value: <+input>
+    - name: helmChartPath
+      type: String
+      value: <+input>
+    - name: sonarProject
+      type: String
+      value: <+input>
+    - name: snykSeverityThreshold
+      type: String
+      value: <+input>
+    - name: tfWorkspace
+      type: String
+      value: <+input>
+    - name: tfStateBucket
+      type: String
+      value: <+input>
+    - name: tfInfraPath
+      type: String
+      value: <+input>
+    - name: sonarHostUrl
+      type: String
+      value: <+input>
+    - name: snykOrgId
+      type: String
+      value: <+input>
+    - name: coverageGate
+      type: String
+      value: '88'
+    - name: gitConnectorRef
+      type: String
+      value: <+input>
+    - name: gitBranch
+      type: String
+      value: <+input>
+    - name: k8sConnectorRef
+      type: String
+      value: <+input>
+    - name: stoNamespace
+      type: String
+      value: <+input>
+    stages:
+    - stage:
+        name: Parallel Build
+        identifier: ParallelBuild
+        template:
+          templateRef: parallel_build_microservice_stage
+          versionLabel: 1.0.0
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Integration Test
+        identifier: IntegrationTest
+        template:
+          templateRef: integration_test_stage
+          versionLabel: 1.0.0
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Infra Validate
+        identifier: InfraValidate
+        description: Terraform plan against remote state for infrastructure validation
+          using native Terraform steps
+        type: Custom
+        spec:
+          execution:
+            steps:
+            - step:
+                name: Terraform Plan
+                identifier: TerraformPlan
+                type: TerraformPlan
+                timeout: 15m
+                spec:
+                  provisionerIdentifier: finclose_infra
+                  configuration:
+                    configFiles:
+                      store:
+                        type: Github
+                        spec:
+                          connectorRef: <+pipeline.variables.gitConnectorRef>
+                          gitFetchType: Branch
+                          branch: <+pipeline.variables.gitBranch>
+                          folderPath: <+pipeline.variables.tfInfraPath>
+                    command: Apply
+                    workspace: <+pipeline.variables.tfWorkspace>
+                    backendConfig:
+                      type: Inline
+                      spec:
+                        content: 'bucket = "<+pipeline.variables.tfStateBucket>"
+
+                          key    = "<+pipeline.variables.tfWorkspace>/terraform.tfstate"
+
+                          region = "us-west-2"
+
+                          '
+                    secretManagerRef: <+input>
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Security and Quality
+        identifier: SecurityAndQuality
+        description: Native STO SonarQube analysis and Snyk security scanning
+        type: SecurityTests
+        spec:
+          cloneCodebase: true
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: <+pipeline.variables.k8sConnectorRef>
+              namespace: <+pipeline.variables.stoNamespace>
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+          execution:
+            steps:
+            - step:
+                name: SonarQube Analysis
+                identifier: SonarQubeAnalysis
+                type: Sonarqube
+                timeout: 15m
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+input>
+                    variant: <+input>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+                    args:
+                      cli: -Dsonar.qualitygate.wait=true
+                  auth:
+                    domain: <+pipeline.variables.sonarHostUrl>
+                    access_token: <+input>
+                    ssl: true
+                  tool:
+                    project_key: <+pipeline.variables.sonarProject>
+                    java:
+                      binaries: target/classes
+            - step:
+                name: Snyk Security Scan
+                identifier: SnykSecurityScan
+                type: Snyk
+                timeout: 15m
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+input>
+                    variant: <+input>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: <+pipeline.variables.snykSeverityThreshold>
+                  auth:
+                    access_token: <+input>
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - parallel:
+      - stage:
+          name: Push Auth
+          identifier: PushAuth
+          template:
+            templateRef: docker_push_microservice_stage
+            versionLabel: 1.0.0
+            templateInputs:
+              type: CI
+              variables:
+              - name: serviceName
+                type: String
+                value: auth-service
+          failureStrategies:
+          - onFailure:
+              errors:
+              - AllErrors
+              action:
+                type: MarkAsFailure
+      - stage:
+          name: Push Catalog
+          identifier: PushCatalog
+          template:
+            templateRef: docker_push_microservice_stage
+            versionLabel: 1.0.0
+            templateInputs:
+              type: CI
+              variables:
+              - name: serviceName
+                type: String
+                value: catalog-service
+          failureStrategies:
+          - onFailure:
+              errors:
+              - AllErrors
+              action:
+                type: MarkAsFailure
+      - stage:
+          name: Push Orders
+          identifier: PushOrders
+          template:
+            templateRef: docker_push_microservice_stage
+            versionLabel: 1.0.0
+            templateInputs:
+              type: CI
+              variables:
+              - name: serviceName
+                type: String
+                value: orders-service
+          failureStrategies:
+          - onFailure:
+              errors:
+              - AllErrors
+              action:
+                type: MarkAsFailure
+    - stage:
+        name: Terraform Apply
+        identifier: TerraformApply
+        description: Apply Terraform infrastructure changes after security gates pass
+        type: Custom
+        spec:
+          execution:
+            steps:
+            - step:
+                name: Terraform Apply
+                identifier: TerraformApplyStep
+                type: TerraformApply
+                timeout: 30m
+                spec:
+                  provisionerIdentifier: finclose_infra
+                  configuration:
+                    type: InheritFromPlan
+                failureStrategies:
+                - onFailure:
+                    errors:
+                    - AllErrors
+                    action:
+                      type: Retry
+                      spec:
+                        retryCount: 2
+                        retryIntervals:
+                        - 10s
+                        onRetryFailure:
+                          action:
+                            type: MarkAsFailure
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Canary Dev
+        identifier: CanaryDev
+        description: Deploy canary release to dev namespace with 20% traffic weight
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Canary Deploy
+                identifier: HelmCanaryDeploy
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: HelmRollback
+                type: HelmRollback
+                timeout: 5m
+                spec: {}
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Approval Promote Dev
+        identifier: ApprovalPromoteDev
+        description: Manual approval gate before promoting canary to full rollout
+          in dev
+        type: Approval
+        spec:
+          execution:
+            steps:
+            - step:
+                name: Approve Dev Promotion
+                identifier: ApproveDevPromotion
+                type: HarnessApproval
+                timeout: 1d
+                spec:
+                  approvalMessage: Please review the canary deployment metrics and
+                    approve to proceed with full rollout in dev namespace.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                  approverInputs: []
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Promote Dev
+        identifier: PromoteDev
+        description: Full rollout in dev namespace after canary approval
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Full Rollout
+                identifier: HelmFullRollout
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: HelmRollback
+                type: HelmRollback
+                timeout: 5m
+                spec: {}
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Approval Deploy Staging
+        identifier: ApprovalDeployStaging
+        description: Manual approval gate before deploying to staging
+        type: Approval
+        spec:
+          execution:
+            steps:
+            - step:
+                name: Approve Staging Deploy
+                identifier: ApproveStagingDeploy
+                type: HarnessApproval
+                timeout: 1d
+                spec:
+                  approvalMessage: Please approve deployment to staging environment.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                  approverInputs: []
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy Staging
+        identifier: DeployStaging
+        description: Deploy to staging namespace
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Deploy Staging
+                identifier: HelmDeployStaging
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: HelmRollback
+                type: HelmRollback
+                timeout: 10m
+                spec: {}
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Approval Deploy Production
+        identifier: ApprovalDeployProduction
+        description: Manual approval gate before deploying to production
+        type: Approval
+        spec:
+          execution:
+            steps:
+            - step:
+                name: Approve Production Deploy
+                identifier: ApproveProductionDeploy
+                type: HarnessApproval
+                timeout: 1d
+                spec:
+                  approvalMessage: Please approve deployment to production environment.
+                    This will deploy with increased replica count for production workloads.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                  approverInputs: []
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy Production
+        identifier: DeployProduction
+        description: Deploy to production namespace with increased replica count
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Deploy Production
+                identifier: HelmDeployProduction
+                type: HelmDeploy
+                timeout: 15m
+                spec: {}
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: HelmRollback
+                type: HelmRollback
+                timeout: 15m
+                spec: {}
+        tags: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+  description: Gap-filled Harness pipeline for Bamboo plan WORKDAY-FINCLOSE, source
+    unit Workday Financials Close Pipeline; cloned from microservices_fanout_pipeline_filled

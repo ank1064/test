@@ -1,0 +1,692 @@
+template:
+  name: Enterprise FHIRV2 Gap 89728238 - gaps filled for HEALTH-FHIRV2
+  identifier: spring_boot_helm_pipeline_filled_HEALTH_FHIRV2
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    fixture: '10'
+    source: bamboo
+    stack: dotnet-fhir
+  description: Gap-filled Harness pipeline for Bamboo plan HEALTH-FHIRV2, source unit
+    Entire pipeline; cloned from spring_boot_helm_pipeline_filled_BANKING_FRAUDSTRM
+  spec:
+    stages:
+    - stage:
+        name: Build Clinical APIs
+        identifier: BuildClinicalAPIs
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Restore NuGet Packages
+                identifier: restore_nuget_packages
+                type: Run
+                spec:
+                  shell: Sh
+                  command: dotnet restore --locked-mode
+            - step:
+                name: Build Release Solution
+                identifier: build_release_solution
+                type: Run
+                spec:
+                  shell: Sh
+                  command: dotnet build FhirGateway.sln -c Release --no-restore
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Build Admin Portal
+        identifier: BuildAdminPortal
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Install Portal Dependencies
+                identifier: install_portal_deps
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cd admin-ui && npm ci
+            - step:
+                name: Build React Portal
+                identifier: build_react_portal
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cd admin-ui && npm run build
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Clinical Validation
+        identifier: ClinicalValidation
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: xUnit Service Tests
+                identifier: xunit_service_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: dotnet test tests/FhirGateway.Tests -c Release --collect:"XPlat
+                    Code Coverage"
+            - step:
+                name: FHIR Validator Suite
+                identifier: fhir_validator_suite
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    FHIR_PROFILE: <+pipeline.variables.fhirProfile>
+                  command: java -jar validator_cli.jar samples/*.json -version ${FHIR_PROFILE}
+            - step:
+                name: Audit Event Verification
+                identifier: audit_event_verification
+                type: Run
+                spec:
+                  shell: Sh
+                  command: dotnet test tests/Audit.Conformance.Tests
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Portal and API Tests
+        identifier: PortalAndAPITests
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Playwright Clinical Workflows
+                identifier: playwright_clinical_workflows
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cd admin-ui && npx playwright test
+            - step:
+                name: Newman SMART-on-FHIR Tests
+                identifier: newman_smart_fhir_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: newman run tests/smart-fhir.postman_collection.json
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Security Controls
+        identifier: SecurityControls
+        type: SecurityTests
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Sonarqube
+                name: Sonar DotNet Analysis
+                identifier: sonar_dotnet_analysis
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: fhir-gateway
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                  auth:
+                    access_token: <+input>
+                  tool:
+                    project_key: <+pipeline.variables.sonarProject>
+            - step:
+                type: Zap
+                name: OWASP ZAP Baseline
+                identifier: owasp_zap_baseline
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: instance
+                    detection: auto
+                    name: fhir-gateway
+                    variant: <+codebase.branch>
+                  instance:
+                    domain: <+pipeline.variables.dastTarget>
+                    protocol: http
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+            - step:
+                type: AquaTrivy
+                name: Trivy Filesystem Scan
+                identifier: trivy_filesystem_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: fhir-gateway
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Package Gateway
+        identifier: PackageGateway
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Background
+                name: Docker DinD
+                identifier: docker_dind
+                spec:
+                  connectorRef: <+input>
+                  image: docker:dind
+                  shell: Sh
+                  privileged: true
+            - step:
+                name: Build FHIR Gateway Image
+                identifier: build_fhir_gateway_image
+                type: BuildAndPushDockerRegistry
+                spec:
+                  connectorRef: <+input>
+                  repo: <+pipeline.variables.imageRegistry>
+                  tags:
+                  - <+pipeline.sequenceId>
+                  dockerfile: Dockerfile
+                  context: .
+            - step:
+                name: Generate SBOM
+                identifier: generate_sbom
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    IMAGE_REGISTRY: <+pipeline.variables.imageRegistry>
+                  command: syft ${IMAGE_REGISTRY}:<+pipeline.sequenceId> -o cyclonedx-json
+                    > fhir-sbom.json
+            - step:
+                name: Helm Lint and Package
+                identifier: helm_lint_package
+                type: Run
+                spec:
+                  shell: Sh
+                  envVariables:
+                    HELM_CHART: <+pipeline.variables.helmChart>
+                  command: 'helm lint ${HELM_CHART}
+
+                    helm package ${HELM_CHART} --version <+pipeline.sequenceId> -d
+                    packaged/
+
+                    '
+          sharedPaths:
+          - /var/run
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Container Image Scan
+        identifier: ContainerImageScan
+        type: SecurityTests
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: AquaTrivy
+                name: Trivy Image Scan
+                identifier: trivy_image_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: container
+                    detection: auto
+                    name: fhir-gateway
+                    variant: <+pipeline.sequenceId>
+                  image:
+                    type: docker_v2
+                    name: <+pipeline.variables.imageRegistry>
+                    tag: <+pipeline.sequenceId>
+                    domain: <+input>
+                    access_token: <+input>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: critical
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy Integration
+        identifier: DeployIntegration
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Blue Green Deployment
+                identifier: K8sBlueGreenDeploy
+                type: K8sBlueGreenDeploy
+                timeout: 10m
+                spec:
+                  skipDryRun: false
+            - step:
+                type: ShellScript
+                name: Verify Rollout
+                identifier: verify_rollout_integration
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace integration
+                        --timeout=300s
+                  onDelegate: true
+                timeout: 10m
+            - step:
+                type: Http
+                name: Integration Smoke Test
+                identifier: integration_smoke_test
+                spec:
+                  url: <+pipeline.variables.integrationHealthCheckUrl>
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                  headers: []
+                timeout: 2m
+            rollbackSteps:
+            - step:
+                name: Blue Green Rollback
+                identifier: K8sRollingRollback
+                type: K8sRollingRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy Clinical UAT
+        identifier: DeployClinicalUAT
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Blue Green Deployment
+                identifier: K8sBlueGreenDeploy
+                type: K8sBlueGreenDeploy
+                timeout: 10m
+                spec:
+                  skipDryRun: false
+            - step:
+                type: ShellScript
+                name: Verify Rollout
+                identifier: verify_rollout_clinical_uat
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace clinical-uat
+                        --timeout=300s
+                  onDelegate: true
+                timeout: 10m
+            - step:
+                type: Http
+                name: Clinical UAT Smoke Test
+                identifier: clinical_uat_smoke_test
+                spec:
+                  url: <+pipeline.variables.clinicalUatHealthCheckUrl>
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                  headers: []
+                timeout: 2m
+            rollbackSteps:
+            - step:
+                name: Blue Green Rollback
+                identifier: K8sRollingRollback
+                type: K8sRollingRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Clinical Privacy Gates
+        identifier: ClinicalPrivacyGates
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Validate PHI De-identification
+                identifier: validate_phi_deidentification
+                type: Run
+                spec:
+                  shell: Sh
+                  command: pytest tests/privacy/test_phi_deidentification.py --k-anonymity
+                    10
+            - step:
+                name: Differential Privacy Budget Test
+                identifier: differential_privacy_budget
+                type: Run
+                spec:
+                  shell: Sh
+                  command: python governance/privacy_budget.py --epsilon 0.5
+            - step:
+                name: FHIR Consent Policy Scan
+                identifier: fhir_consent_policy_scan
+                type: Run
+                spec:
+                  shell: Sh
+                  command: opa test policy/consent -v
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Regulatory Evidence
+        identifier: RegulatoryEvidence
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Package FDA Audit Evidence
+                identifier: package_fda_audit_evidence
+                type: Run
+                spec:
+                  shell: Sh
+                  command: python governance/package_fda_evidence.py --build <+pipeline.sequenceId>
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Production Blue Green Deployment
+        identifier: ProductionBlueGreenDeployment
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: Clinical Safety Approval
+                identifier: clinical_safety_approval
+                spec:
+                  approvalMessage: Clinical FHIR Gateway build <+pipeline.sequenceId>
+                    is ready for production blue-green deployment. Clinical Safety
+                    and Privacy Office approval required.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups: <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                timeout: 1d
+            - step:
+                type: K8sBlueGreenDeploy
+                name: Deploy Green Helm Release
+                identifier: deploy_green_helm_release
+                spec:
+                  skipDryRun: false
+                  pruningEnabled: false
+                timeout: 15m
+            - step:
+                type: ShellScript
+                name: Production Conformance Probe
+                identifier: production_conformance_probe
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: ./ops/fhir-probe.sh --endpoint ${DAST_TARGET}
+                  environmentVariables:
+                  - name: DAST_TARGET
+                    type: String
+                    value: <+pipeline.variables.dastTarget>
+                  onDelegate: true
+                timeout: 10m
+            - step:
+                type: K8sBGSwapServices
+                name: Switch Ingress to Green
+                identifier: switch_ingress_to_green
+                spec:
+                  skipDryRun: false
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Verify Production Rollout
+                identifier: verify_production_rollout
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace production
+                        --timeout=300s
+                  onDelegate: true
+                timeout: 10m
+            - step:
+                type: Http
+                name: Production Smoke Test
+                identifier: production_smoke_test
+                spec:
+                  url: <+pipeline.variables.productionHealthCheckUrl>
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                  headers: []
+                timeout: 2m
+            rollbackSteps:
+            - step:
+                type: K8sBGSwapServices
+                name: Rollback to Blue
+                identifier: rollback_to_blue
+                spec:
+                  skipDryRun: false
+                timeout: 10m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy Audit Canary
+        identifier: DeployAuditCanary
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Blue Green Deployment
+                identifier: K8sBlueGreenDeploy
+                type: K8sBlueGreenDeploy
+                timeout: 10m
+                spec:
+                  skipDryRun: false
+            rollbackSteps:
+            - step:
+                name: Blue Green Rollback
+                identifier: K8sRollingRollback
+                type: K8sRollingRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    variables:
+    - name: imageRegistry
+      type: String
+      value: <+input>
+      default: ghcr.io/acme-health/fhir-gateway
+    - name: helmChart
+      type: String
+      value: <+input>
+      default: ./deploy/fhir-gateway
+    - name: fhirProfile
+      type: String
+      value: <+input>
+      default: US_CORE_6
+    - name: dastTarget
+      type: String
+      value: <+input>
+      default: http://fhir-green.internal
+    - name: sonarProject
+      type: String
+      value: <+input>
+      default: fhir-gateway
+    - name: integrationHealthCheckUrl
+      type: String
+      value: <+input>
+      default: https://app-integration.example.com/health
+    - name: clinicalUatHealthCheckUrl
+      type: String
+      value: <+input>
+      default: https://app-clinical-uat.example.com/health
+    - name: productionHealthCheckUrl
+      type: String
+      value: <+input>
+      default: https://app-production.example.com/health

@@ -1,0 +1,57 @@
+pipeline:
+  name: Enterprise LAKEHOUSE 79550399
+  identifier: enterprise_lakehouse_79550399
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Enterprise LAKEHOUSE 79550399. Review connectors,
+    secrets, and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: py_flask_ci_pipeline_v1_filled_DATA_LAKEHOUSE
+    versionLabel: v1
+    gitBranch: ank1064-patch-1
+    templateInputs:
+      variables:
+      - name: IMAGE_REGISTRY
+        type: String
+        value: <+input>
+      - name: DBT_TARGET
+        type: String
+        value: <+input>
+      - name: TF_WORKSPACE
+        type: String
+        value: <+input>
+      - name: QUALITY_SCORE
+        type: String
+        value: <+input>
+      stages:
+      - stage:
+          identifier: deploy_dev
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: deploy_preproduction
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: deploy_production
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>

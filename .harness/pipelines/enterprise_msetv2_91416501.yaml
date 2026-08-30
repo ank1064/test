@@ -1,0 +1,24 @@
+pipeline:
+  name: Enterprise MSETV2 91416501
+  identifier: enterprise_msetv2_91416501
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Enterprise MSETV2 91416501. Review connectors,
+    secrets, and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: account.demo_mapper_build_sto_starter_filled_FINANCE_MSETV2
+    versionLabel: v1
+    gitBranch: ank1064-patch-1
+    templateInputs:
+      stages:
+      - stage:
+          identifier: deploy_to_uat
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>

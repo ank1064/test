@@ -1,0 +1,87 @@
+pipeline:
+  name: Enterprise PAYCORE 78596995
+  identifier: enterprise_paycore_78596995
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Enterprise PAYCORE 78596995. Review connectors,
+    secrets, and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: spring_boot_helm_pipeline_filled_BANKING_PAYCORE
+    versionLabel: v1
+    gitBranch: ank1064-patch-1
+    templateInputs:
+      variables:
+      - name: modelName
+        type: String
+        value: <+input>
+      - name: mlflowTrackingUri
+        type: String
+        value: <+input>
+      - name: featureStoreUri
+        type: String
+        value: <+input>
+      - name: runtimeImageRegistry
+        type: String
+        value: <+input>
+      - name: helmChart
+        type: String
+        value: <+input>
+      - name: trainEpochs
+        type: String
+        value: <+input>
+      - name: trainBatchSize
+        type: String
+        value: <+input>
+      - name: latencyP99MsBudget
+        type: String
+        value: <+input>
+      - name: fairnessThreshold
+        type: String
+        value: <+input>
+      - name: sonarProject
+        type: String
+        value: <+input>
+      - name: artifactBucket
+        type: String
+        value: <+input>
+      - name: devHealthCheckUrl
+        type: String
+        value: <+input>
+      - name: qaHealthCheckUrl
+        type: String
+        value: <+input>
+      - name: productionHealthCheckUrl
+        type: String
+        value: <+input>
+      stages:
+      - stage:
+          identifier: DeployDev
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: DeployQa
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: DeployProduction
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>

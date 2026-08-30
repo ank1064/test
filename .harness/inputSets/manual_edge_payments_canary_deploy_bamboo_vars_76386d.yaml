@@ -1,0 +1,74 @@
+inputSet:
+  name: MANUAL Edge Payments - Canary Deploy - Bamboo Variable Mappings
+  tags: {}
+  identifier: manual_edge_payments_canary_deploy_bamboo_vars_76386d
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: manual_edge_payments_canary_deploy
+    template:
+      templateInputs:
+        variables:
+        - name: AUTH_IMAGE_REGISTRY
+          type: String
+          value: registry.example.com/auth
+        - name: LEDGER_IMAGE_REGISTRY
+          type: String
+          value: registry.example.com/ledger
+        - name: WEBHOOK_IMAGE_REGISTRY
+          type: String
+          value: registry.example.com/webhook
+        - name: APP_NAME
+          type: String
+          value: edge-payments
+        - name: SONAR_URL
+          type: String
+          value: <+input>
+        - name: SONAR_PROJECT_KEY
+          type: String
+          value: <+input>
+        - name: DEPLOY_HOST_DEV
+          type: String
+          value: <+input>
+        - name: DEPLOY_HOST_STAGING
+          type: String
+          value: <+input>
+        - name: DEPLOY_HOST_PROD
+          type: String
+          value: <+input>
+        properties:
+          ci:
+            codebase:
+              connectorRef: <+input>
+              repoName: <+input>
+              build:
+                spec:
+                  branch: <+input>
+        stages:
+        - stage:
+            identifier: deploy_dev_canary
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions: <+input>
+        - stage:
+            identifier: deploy_staging_canary
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions: <+input>
+        - stage:
+            identifier: deploy_production_canary
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions: <+input>

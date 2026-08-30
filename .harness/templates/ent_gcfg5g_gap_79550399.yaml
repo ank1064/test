@@ -1,0 +1,341 @@
+template:
+  name: Enterprise GCFG5G Gap 79550399 - gaps filled for TELCO-GCFG5G
+  identifier: demo_mapper_build_sto_starter_filled_TELCO_GCFG5G
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    mapper_demo: 'true'
+    role: starter
+  description: Gap-filled Harness pipeline for Bamboo plan TELCO-GCFG5G, source unit
+    Entire pipeline; cloned from demo_mapper_build_sto_starter
+  spec:
+    stages:
+    - stage:
+        name: Build
+        identifier: build
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Buf Lint Protobuf
+                identifier: buf_lint
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'buf lint proto && buf breaking --against ''.git#branch=main''
+
+                    '
+            - step:
+                name: Compile
+                identifier: compile
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'echo "Building Go control plane..."
+
+                    go build -trimpath -o dist/config-controller ./cmd/controller
+
+                    '
+            - step:
+                name: Unit Tests
+                identifier: unit_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'go test -race -coverprofile=coverage.out ./...
+
+                    '
+                  reports:
+                    type: JUnit
+                    spec:
+                      paths:
+                      - '**/coverage.out'
+            - step:
+                name: Integration Tests
+                identifier: integration_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'ginkgo -r tests/integration
+
+                    '
+            - step:
+                name: Topology Tests
+                identifier: topology_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'pytest tests/topology --junitxml=topology.xml
+
+                    '
+                  reports:
+                    type: JUnit
+                    spec:
+                      paths:
+                      - topology.xml
+            - step:
+                name: Build Controller Image
+                identifier: build_image
+                type: BuildAndPushDockerRegistry
+                spec:
+                  connectorRef: <+input>
+                  repo: ghcr.io/acme-telco/5g-config
+                  tags:
+                  - <+pipeline.sequenceId>
+                  dockerfile: Dockerfile
+            - step:
+                name: Sign Controller Image
+                identifier: sign_image
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'cosign sign --key env://COSIGN_KEY ghcr.io/acme-telco/5g-config:<+pipeline.sequenceId>
+
+                    '
+                  envVariables:
+                    COSIGN_KEY: <+secrets.getValue("cosign_private_key")>
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: STO Scan
+        identifier: sto_scan
+        type: SecurityTests
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Gitleaks
+                identifier: gitleaks
+                type: Gitleaks
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+input>
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+            - step:
+                name: AquaTrivy
+                identifier: aqua_trivy
+                type: AquaTrivy
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+input>
+                    type: container
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                  image:
+                    type: docker_v2
+                    name: <+input>
+                    tag: <+input>
+            - step:
+                name: Trivy Config Scan
+                identifier: trivy_config
+                type: AquaTrivy
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: deploy-config
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    args:
+                      cli: config --exit-code 1 deploy
+            - step:
+                name: OPA Policy Tests
+                identifier: opa_policy_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'conftest test deploy/policies
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Resilience Validation
+        identifier: resilience_validation
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Chaos Packet Loss
+                identifier: chaos_packet_loss
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'kubectl apply -f tests/chaos/packet-loss.yaml
+
+                    '
+            - step:
+                name: Failover Conformance
+                identifier: failover_conformance
+                type: Run
+                spec:
+                  shell: Sh
+                  command: 'go test ./tests/failover -timeout 20m
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy Production Canary
+        identifier: deploy_production
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Canary Deployment
+                identifier: canary_deploy
+                type: K8sCanaryDeploy
+                timeout: 10m
+                spec:
+                  skipDryRun: false
+                  instanceSelection:
+                    type: Percentage
+                    spec:
+                      percentage: 25
+            - step:
+                name: Validate Error Budget
+                identifier: validate_error_budget
+                type: ShellScript
+                timeout: 10m
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: './ops/check-network-slo.sh --regions us-east-1,eu-west-1
+                        --budget 0.5
+
+                        '
+            - step:
+                name: Approval Gate
+                identifier: approval_gate
+                type: HarnessApproval
+                timeout: 1d
+                spec:
+                  approvalMessage: Please review canary deployment metrics before
+                    promoting to full rollout
+                  includePipelineExecutionHistory: true
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                  approverInputs: []
+            - step:
+                name: Canary Delete
+                identifier: canary_delete
+                type: K8sCanaryDelete
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Rolling Deploy Full
+                identifier: rolling_deploy_full
+                type: K8sRollingDeploy
+                timeout: 10m
+                spec:
+                  skipDryRun: false
+                  pruningEnabled: false
+            - step:
+                name: Verify Full Rollout
+                identifier: verify_rollout
+                type: ShellScript
+                timeout: 10m
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'kubectl rollout status deployment/5g-config --namespace
+                        <+infra.namespace> --timeout=300s
+
+                        '
+            - step:
+                name: Smoke Test
+                identifier: smoke_test
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'curl -fsS https://app-global-production.example.com/health
+
+                        '
+            rollbackSteps:
+            - step:
+                name: Canary Rollback
+                identifier: canary_rollback
+                type: K8sCanaryDelete
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Rolling Rollback
+                identifier: rolling_rollback
+                type: K8sRollingRollback
+                timeout: 10m
+                spec:
+                  pruningEnabled: false
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback

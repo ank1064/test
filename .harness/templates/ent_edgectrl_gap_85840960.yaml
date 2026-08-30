@@ -1,0 +1,28 @@
+template:
+  name: Enterprise EDGECTRL Gap 85840960 - gaps filled for IOT-EDGECTRL
+  identifier: sto_snyk_step_filled_IOT_EDGECTRL
+  versionLabel: v1
+  type: Step
+  description: Gap-filled Harness step for Bamboo plan IOT-EDGECTRL, source unit grype;
+    cloned from sto_snyk_step
+  spec:
+    type: Grype
+    spec:
+      mode: ingestion
+      config: default
+      target:
+        type: repository
+        name: <+pipeline.name>
+        variant: <+codebase.branch>
+      ingestion:
+        file: edge-controller.spdx.json
+      advanced:
+        fail_on_severity: high
+      sbom:
+        format: spdx-json
+    failureStrategies:
+    - onFailure:
+        errors:
+        - AllErrors
+        action:
+          type: MarkAsFailure

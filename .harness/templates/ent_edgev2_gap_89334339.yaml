@@ -1,0 +1,564 @@
+template:
+  name: Enterprise EDGEV2 Gap 89334339 - gaps filled for IOT-EDGEV2
+  identifier: demo_mapper_build_sto_starter_filled_IOT_EDGEV2
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    mapper_demo: 'true'
+    role: starter
+  description: Gap-filled Harness pipeline for Bamboo plan IOT-EDGEV2, source unit
+    Entire pipeline; cloned from demo_mapper_build_sto_starter_filled
+  spec:
+    properties:
+      ci:
+        codebase:
+          connectorRef: <+input>
+          repoName: <+input>
+          build: <+input>
+    stages:
+    - stage:
+        name: Cross Compile Firmware
+        identifier: cross_compile_firmware
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Configure ARM Toolchain
+                identifier: configure_arm_toolchain
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cmake -S firmware -B build/fw -DCMAKE_TOOLCHAIN_FILE=cmake/arm-gcc.cmake
+            - step:
+                name: Build Release Firmware
+                identifier: build_release_firmware
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cmake --build build/fw --target edge_firmware -j8
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Build Gateway Agent
+        identifier: build_gateway_agent
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Go Module Verification
+                identifier: go_module_verify
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cd gateway && go mod verify
+            - step:
+                name: Compile Gateway Agent
+                identifier: compile_gateway_agent
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cd gateway && CGO_ENABLED=0 go build -trimpath -o ../dist/edge-agent
+                    ./cmd/agent
+            - step:
+                name: Build and Push Agent Image
+                identifier: build_push_agent
+                type: BuildAndPushDockerRegistry
+                spec:
+                  connectorRef: <+input>
+                  repo: <+input>
+                  tags:
+                  - <+pipeline.variables.FIRMWARE_VERSION>
+                  dockerfile: gateway/Dockerfile
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Static and Unit Tests
+        identifier: static_unit_tests
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Cppcheck MISRA Rules
+                identifier: cppcheck_misra
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cppcheck --addon=misra --error-exitcode=1 firmware/src
+            - step:
+                name: GoogleTest Firmware Suites
+                identifier: googletest_firmware
+                type: Run
+                spec:
+                  shell: Sh
+                  command: ctest --test-dir build/fw --output-on-failure
+            - step:
+                name: Go Race Tests
+                identifier: go_race_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cd gateway && go test -race ./...
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Hardware in Loop
+        identifier: hardware_in_loop
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Flash HIL Controller
+                identifier: flash_hil_controller
+                type: Run
+                spec:
+                  shell: Sh
+                  command: ./hil/flash.sh --lab <+pipeline.variables.HIL_LAB> build/fw/edge_firmware.bin
+            - step:
+                name: Run Thermal and Watchdog Suite
+                identifier: thermal_watchdog_suite
+                type: Run
+                spec:
+                  shell: Sh
+                  command: pytest hil/tests -m 'thermal or watchdog' --junitxml=hil-results.xml
+                  reports:
+                    type: JUnit
+                    spec:
+                      paths:
+                      - hil-results.xml
+            - step:
+                name: Validate CAN Bus Protocol
+                identifier: can_bus_validation
+                type: Run
+                spec:
+                  shell: Sh
+                  command: ./hil/can-conformance.sh --lab <+pipeline.variables.HIL_LAB>
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Supply Chain Security
+        identifier: supply_chain_security
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Generate SPDX SBOM
+                identifier: generate_spdx_sbom
+                type: Plugin
+                spec:
+                  connectorRef: account.harnessImage
+                  image: anchore/syft:latest
+                  settings:
+                    output: spdx-json
+                    file: edge-controller.spdx.json
+            - step:
+                name: Grype Dependency Scan
+                identifier: grype_dependency_scan
+                type: Grype
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: edge-controller
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+                  sbom:
+                    format: spdx-json
+                    source: edge-controller.spdx.json
+            - step:
+                name: Sign Firmware Binary
+                identifier: sign_firmware_binary
+                type: Run
+                spec:
+                  shell: Sh
+                  command: cosign sign-blob --key env://FW_SIGNING_KEY --output-signature
+                    dist/firmware.sig build/fw/edge_firmware.bin
+                  envVariables:
+                    FW_SIGNING_KEY: <+secrets.getValue("fw_signing_key")>
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Publish Firmware Bundle
+        identifier: publish_firmware_bundle
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Create OTA Bundle
+                identifier: create_ota_bundle
+                type: Run
+                spec:
+                  shell: Sh
+                  command: tar -czf edge-controller-<+pipeline.variables.FIRMWARE_VERSION>.tgz
+                    build/fw/edge_firmware.bin dist/firmware.sig dist/edge-agent edge-controller.spdx.json
+            - step:
+                name: Upload Immutable Bundle
+                identifier: upload_immutable_bundle
+                type: Run
+                spec:
+                  shell: Sh
+                  command: aws s3 cp edge-controller-<+pipeline.variables.FIRMWARE_VERSION>.tgz
+                    <+pipeline.variables.ARTIFACT_BUCKET>/<+pipeline.variables.FIRMWARE_VERSION>/
+                  envVariables:
+                    AWS_ACCESS_KEY_ID: <+secrets.getValue("aws_access_key_id")>
+                    AWS_SECRET_ACCESS_KEY: <+secrets.getValue("aws_secret_access_key")>
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy HIL Lab
+        identifier: deploy_hil_lab
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Deploy HIL Lab
+                identifier: helm_deploy_hil_lab
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Verify Rollout
+                identifier: verify_rollout_hil
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace hil-lab
+                        --timeout=300s
+            - step:
+                name: Smoke Test
+                identifier: smoke_test_hil
+                type: Http
+                timeout: 1m
+                spec:
+                  url: https://app-hil-lab.example.com/health
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: helm_rollback_hil
+                type: HelmRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy Pilot Fleet
+        identifier: deploy_pilot_fleet
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Deploy Pilot Fleet
+                identifier: helm_deploy_pilot_fleet
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Verify Rollout
+                identifier: verify_rollout_pilot
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace pilot-fleet
+                        --timeout=300s
+            - step:
+                name: Verify Device Health
+                identifier: verify_device_health
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: ./ops/fleet-health.sh --ring <+pipeline.variables.ROLLOUT_RING>
+                        --minimum-success 99
+            - step:
+                name: Rollback Drill
+                identifier: rollback_drill
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: ./ops/rollback-drill.sh --ring <+pipeline.variables.ROLLOUT_RING>
+            - step:
+                name: Smoke Test
+                identifier: smoke_test_pilot
+                type: Http
+                timeout: 1m
+                spec:
+                  url: https://app-pilot-fleet.example.com/health
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: helm_rollback_pilot
+                type: HelmRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Firmware Transparency Gate
+        identifier: firmware_transparency_gate
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Publish Rekor Transparency Entry
+                identifier: publish_rekor_entry
+                type: Run
+                spec:
+                  shell: Sh
+                  command: rekor-cli upload --artifact edge-controller-<+pipeline.variables.FIRMWARE_VERSION>.tgz
+                    --signature dist/firmware.sig
+            - step:
+                name: Verify TPM Measured Boot Attestation
+                identifier: verify_tpm_attestation
+                type: Run
+                spec:
+                  shell: Sh
+                  command: pytest validation/tpm_attestation --pcr-policy policies/production-pcr.json
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Disconnected Site Drill
+        identifier: disconnected_site_drill
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Package Air-Gapped Update Media
+                identifier: package_airgap_media
+                type: Run
+                spec:
+                  shell: Sh
+                  command: ./ops/build-offline-bundle.sh --include-root-of-trust
+            - step:
+                name: Safety Controller Approval
+                identifier: safety_controller_approval
+                type: Run
+                timeout: 1d
+                spec:
+                  shell: Sh
+                  command: echo "Manual approval required from Functional Safety and
+                    Plant Operations for safety-controller rollout"
+            - step:
+                name: Deploy to Disconnected Simulator
+                identifier: deploy_disconnected_simulator
+                type: Run
+                spec:
+                  shell: Sh
+                  command: ansible-playbook deploy/airgap-simulator.yml --check
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy Production Fleet
+        identifier: deploy_production_fleet
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                name: Helm Deploy Production Fleet
+                identifier: helm_deploy_production
+                type: HelmDeploy
+                timeout: 10m
+                spec: {}
+            - step:
+                name: Verify Rollout
+                identifier: verify_rollout_production
+                type: ShellScript
+                timeout: 5m
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: kubectl rollout status deployment/app --namespace production-fleet
+                        --timeout=300s
+            - step:
+                name: Smoke Test
+                identifier: smoke_test_production
+                type: Http
+                timeout: 1m
+                spec:
+                  url: https://app-production-fleet.example.com/health
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+            rollbackSteps:
+            - step:
+                name: Helm Rollback
+                identifier: helm_rollback_production
+                type: HelmRollback
+                timeout: 10m
+                spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    variables:
+    - name: FIRMWARE_VERSION
+      type: String
+      default: 4.12.<+pipeline.sequenceId>
+      value: 4.12.<+pipeline.sequenceId>
+    - name: ARTIFACT_BUCKET
+      type: String
+      default: s3://industrial-firmware/edge-controller
+      value: s3://industrial-firmware/edge-controller
+    - name: HIL_LAB
+      type: String
+      default: hil-lab-03
+      value: hil-lab-03
+    - name: ROLLOUT_RING
+      type: String
+      default: pilot
+      value: pilot

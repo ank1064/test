@@ -1,0 +1,23 @@
+template:
+  name: Enterprise MSETV2 Gap 89728238 - gaps filled for FINANCE-MSETV2
+  identifier: sonarqube_scan_step_filled_FINANCE_MSETV2
+  versionLabel: v1
+  type: Step
+  tags:
+    ci: ''
+    security: ''
+    helm: ''
+  spec:
+    type: HelmDeploy
+    spec:
+      ignoreReleaseHistFailStatus: false
+      skipDryRun: false
+    timeout: 10m
+    failureStrategies:
+    - onFailure:
+        errors:
+        - AllErrors
+        action:
+          type: MarkAsFailure
+  description: Gap-filled Harness step for Bamboo plan FINANCE-MSETV2, source unit
+    sonarqube; cloned from sonarqube_scan_step

@@ -1,0 +1,59 @@
+pipeline:
+  name: Enterprise GCFGV2 89728238
+  identifier: enterprise_gcfgv2_89728238
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Enterprise GCFGV2 89728238. Review connectors,
+    secrets, and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: account.demo_mapper_build_sto_starter_filled_TELCO_GCFGV2
+    versionLabel: v1
+    gitBranch: ank1064-patch-1
+    templateInputs:
+      properties:
+        ci:
+          codebase:
+            connectorRef: <+input>
+            repoName: <+input>
+            build: <+input>
+      stages:
+      - stage:
+          identifier: deploy_network_lab
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: deploy_regional_canary
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: deploy_global_production
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: certificate_rotation_drill
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions: <+input>

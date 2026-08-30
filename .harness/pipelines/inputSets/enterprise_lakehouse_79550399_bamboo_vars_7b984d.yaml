@@ -1,0 +1,54 @@
+inputSet:
+  name: Enterprise LAKEHOUSE 79550399 - Bamboo Variable Mappings
+  tags: {}
+  identifier: enterprise_lakehouse_79550399_bamboo_vars_7b984d
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  pipeline:
+    identifier: enterprise_lakehouse_79550399
+    template:
+      templateInputs:
+        variables:
+        - name: IMAGE_REGISTRY
+          type: String
+          value: <+input>
+        - name: DBT_TARGET
+          type: String
+          value: dev
+        - name: TF_WORKSPACE
+          type: String
+          value: default
+        - name: QUALITY_SCORE
+          type: String
+          value: <+input>
+        stages:
+        - stage:
+            identifier: deploy_dev
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: deploy_preproduction
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>
+        - stage:
+            identifier: deploy_production
+            type: Deployment
+            spec:
+              service:
+                serviceRef: <+input>
+              environment:
+                environmentRef: <+input>
+                infrastructureDefinitions:
+                - identifier: <+input>

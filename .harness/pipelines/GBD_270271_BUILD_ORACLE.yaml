@@ -1,0 +1,313 @@
+pipeline:
+  name: GBD_270271_BUILD_ORACLE
+  identifier: GBD_270271_BUILD_ORACLE
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  tags:
+    ai_generated: ''
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        repoName: 270-271
+        build:
+          type: branch
+          spec:
+            branch: <+input>
+  stages:
+  - stage:
+      name: ORACLE_Delta
+      identifier: ORACLE_Delta
+      description: Security / STO stage for SonarQube analysis Includes source-grounded
+        build recipes and native security steps.
+      type: CI
+      spec:
+        cloneCodebase: false
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: Linux
+        execution:
+          steps:
+          - step:
+              type: Run
+              name: Cleanup_Activity
+              identifier: Clean_Workspace
+              spec:
+                shell: Sh
+                command: '# Preserve Bamboo clean-before-checkout ordering.
+
+                  find . -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null ||
+                  true
+
+                  echo "Workspace cleaned"'
+                connectorRef: account.harnessImage
+                image: alpine
+          - step:
+              type: GitClone
+              name: Checkout GBD_270-271
+              identifier: Checkout_GBD_270_271
+              spec:
+                connectorRef: <+input>
+                repoName: 270-271
+                build:
+                  type: branch
+                  spec:
+                    branch: release/release-cloud
+                cloneDirectory: Source
+          - step:
+              type: GitClone
+              name: Checkout ORACLE_Build_SourceCode
+              identifier: Checkout_ORACLE_Build_SourceCode
+              spec:
+                connectorRef: <+input>
+                repoName: gbd_devops_sql_build
+                build:
+                  type: branch
+                  spec:
+                    branch: feature/devops_oracle_build
+                cloneDirectory: Helper
+          - step:
+              type: GitClone
+              name: Checkout JFROG CLI
+              identifier: Checkout_JFROG_CLI
+              spec:
+                connectorRef: <+input>
+                repoName: jfrog_cli
+                build:
+                  type: branch
+                  spec:
+                    branch: master
+                cloneDirectory: jfroghelper
+          - step:
+              type: GitClone
+              name: Checkout gbd_cloud_devopsscripts
+              identifier: Checkout_gbd_cloud_devopsscripts
+              spec:
+                connectorRef: <+input>
+                repoName: gbd_cloud_devopsscripts
+                build:
+                  type: branch
+                  spec:
+                    branch: master
+                cloneDirectory: gbd_cloud_devopsscripts
+          - step:
+              name: Inject Build variable
+              identifier: inject_buildvar
+              description: From Bamboo inject-variables file `Source/ORACLE/DRIVER/build.properties`.
+                Values are exposed as declared Harness output variables; secret-shaped
+                keys require Harness secret references instead.
+              type: Run
+              spec:
+                connectorRef: account.harnessImage
+                image: alpine
+                shell: Sh
+                command: 'set -eu
+
+                  properties_file=Source/ORACLE/DRIVER/build.properties
+
+                  test -f "$properties_file"
+
+                  buildvar_sonar_project_key=$(awk -F= -v wanted=sonar_project_key
+                  ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_sonar_project_key
+
+                  buildvar_oracle_jfrog_url=$(awk -F= -v wanted=oracle.jfrog.url ''$1
+                  == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_oracle_jfrog_url
+
+                  buildvar_oracle_jfrog_repository=$(awk -F= -v wanted=oracle.jfrog.repository
+                  ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_oracle_jfrog_repository
+
+                  buildvar_environment=$(awk -F= -v wanted=environment ''$1 == wanted
+                  {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_environment
+
+                  buildvar_context=$(awk -F= -v wanted=context ''$1 == wanted {sub(/^[^=]*=/,
+                  ""); print; exit}'' "$properties_file")
+
+                  export buildvar_context
+
+                  buildvar_vault_usecyberarkapi=$(awk -F= -v wanted=vault.UseCyberArkAPI
+                  ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_vault_usecyberarkapi
+
+                  buildvar_username=$(awk -F= -v wanted=username ''$1 == wanted {sub(/^[^=]*=/,
+                  ""); print; exit}'' "$properties_file")
+
+                  export buildvar_username
+
+                  buildvar_vault_cyberarksafe=$(awk -F= -v wanted=vault.CyberArkSafe
+                  ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_vault_cyberarksafe
+
+                  buildvar_vault_cyberarkobject=$(awk -F= -v wanted=vault.CyberArkObject
+                  ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_vault_cyberarkobject
+
+                  buildvar_python_path=$(awk -F= -v wanted=python.path ''$1 == wanted
+                  {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_python_path
+
+                  buildvar_jfrog_auth_type=$(awk -F= -v wanted=jfrog.auth.type ''$1
+                  == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_jfrog_auth_type
+
+                  buildvar_jfrog_hcvault_enable=$(awk -F= -v wanted=jfrog_hcvault_enable
+                  ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_jfrog_hcvault_enable
+
+                  buildvar_jfrog_hcvault_namespace=$(awk -F= -v wanted=jfrog_hcvault_namespace
+                  ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_jfrog_hcvault_namespace
+
+                  buildvar_jfrog_hcvault_mountpoint=$(awk -F= -v wanted=jfrog_hcvault_mountpoint
+                  ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_jfrog_hcvault_mountpoint
+
+                  buildvar_jfrog_hcvault_vaultpath=$(awk -F= -v wanted=jfrog_hcvault_vaultpath
+                  ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                  export buildvar_jfrog_hcvault_vaultpath'
+                outputVariables:
+                - name: buildvar_sonar_project_key
+                - name: buildvar_oracle_jfrog_url
+                - name: buildvar_oracle_jfrog_repository
+                - name: buildvar_environment
+                - name: buildvar_context
+                - name: buildvar_vault_usecyberarkapi
+                - name: buildvar_username
+                - name: buildvar_vault_cyberarksafe
+                - name: buildvar_vault_cyberarkobject
+                - name: buildvar_python_path
+                - name: buildvar_jfrog_auth_type
+                - name: buildvar_jfrog_hcvault_enable
+                - name: buildvar_jfrog_hcvault_namespace
+                - name: buildvar_jfrog_hcvault_mountpoint
+                - name: buildvar_jfrog_hcvault_vaultpath
+              timeout: 10m
+          - step:
+              type: Sonarqube
+              name: Sonarqube
+              identifier: Sonarqube
+              spec:
+                mode: orchestration
+                config: default
+                target:
+                  type: repository
+                  name: GBD_270_271
+                  variant: <+codebase.branch>
+                  detection: auto
+                advanced:
+                  log:
+                    level: info
+                  fail_on_severity: high
+                auth:
+                  access_token: <+pipeline.variables.sonarqubeToken>
+                  domain: <+input>
+                  ssl: true
+                tool:
+                  project_key: <+input>
+                imagePullPolicy: Always
+          - step:
+              name: ORACLE Delta Task
+              identifier: oracle_delta_task
+              template:
+                templateRef: bamboo_recipe_maven
+                versionLabel: v1
+                templateInputs:
+                  type: Run
+                  spec:
+                    command: "mvn clean install \n-Ddirectory=.\n-DjfrogUrl=<+pipeline.stages.ORACLE_Delta.spec.execution.steps.inject_buildvar.output.outputVariables.buildvar_oracle_jfrog_url>\n\
+                      -DjfrogTarget=<+pipeline.stages.ORACLE_Delta.spec.execution.steps.inject_buildvar.output.outputVariables.buildvar_oracle_jfrog_repository>\n\
+                      -Denvironment=<+pipeline.stages.ORACLE_Delta.spec.execution.steps.inject_buildvar.output.outputVariables.buildvar_environment>\n\
+                      -Dcontext=<+pipeline.stages.ORACLE_Delta.spec.execution.steps.inject_buildvar.output.outputVariables.buildvar_context>\n\
+                      -DCyberarkIntegration=<+pipeline.stages.ORACLE_Delta.spec.execution.steps.inject_buildvar.output.outputVariables.buildvar_vault_usecyberarkapi>\n\
+                      -Dsurefire.suiteXmlFiles=src/test/java/anthem/Liquibase_ORACLE.xml\n\
+                      -Dusername=<+pipeline.stages.ORACLE_Delta.spec.execution.steps.inject_buildvar.output.outputVariables.buildvar_username>\n\
+                      -Dpassword=<+pipeline.variables.password>\n-DCyberArkAppId=<+pipeline.variables.vault_CyberArkAppID_Secret>\n\
+                      -DCyberArkSafe=<+pipeline.stages.ORACLE_Delta.spec.execution.steps.inject_buildvar.output.outputVariables.buildvar_vault_cyberarksafe>\n\
+                      -DCyberArkObject=<+pipeline.stages.ORACLE_Delta.spec.execution.steps.inject_buildvar.output.outputVariables.buildvar_vault_cyberarkobject>\n\
+                      -DbuildKey=<+pipeline.executionId>"
+              description: From Bamboo plugin `maven` via recipe `bamboo_recipe_maven`.
+          - step:
+              identifier: Publish_Artifacts
+              name: Publish Artifacts
+              type: Run
+              spec:
+                connectorRef: account.harnessImage
+                image: alpine
+                shell: Sh
+                command: '# checklist:artifact_publish
+
+                  # TODO: Bamboo captured these job artifacts. Wire a native upload
+                  step
+
+                  # (S3Upload / GCSUpload / ArtifactoryUpload) to your artifact store.
+
+                  echo "Artifact DeployInfo: <unknown location> (**/Artifacts/DeployInfo.properties)"'
+              when:
+                stageStatus: All
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: MarkAsFailure
+  variables:
+  - name: sonarqubeToken
+    type: Secret
+    description: Sonarqube credential supplied as a Harness secret reference by an
+      input set.
+    required: true
+    value: <+input>
+  - name: cyberarkappId_secret_gbdtoolsdevops
+    type: Secret
+    value: <+input>
+    description: Bamboo secret 'cyberarkappId_secret_gbdtoolsdevops' — bind to a Harness
+      secret
+  - name: cyberarkobject_gbdtoolsdevops
+    type: String
+    value: us.ad.wellpoint.com-SRC_TOOLS_DEVOPS
+  - name: cyberarksafe_gbdtoolsdevops
+    type: String
+    value: SVC-GBD_DEVOPS_DEV
+  - name: password
+    type: Secret
+    value: <+input>
+    description: Bamboo secret 'password' — bind to a Harness secret
+  - name: sonarqubetoken_secret
+    type: Secret
+    value: <+input>
+    description: Bamboo secret 'sonarqubetoken_secret' — bind to a Harness secret
+  - name: vault_CyberArkAppID_Secret
+    type: Secret
+    value: <+input>
+    description: Bamboo secret 'vault.CyberArkAppID.Secret' — bind to a Harness secret
+  - name: vault_roleid_secret
+    type: Secret
+    value: <+input>
+    description: Bamboo secret 'vault_roleid_secret' — bind to a Harness secret
+  - name: vault_secretid
+    type: Secret
+    value: <+input>
+    description: Bamboo secret 'vault_secretid' — bind to a Harness secret
+  description: 'Migrated pipeline: GBD_270271_BUILD_ORACLE. Review connectors, secrets,
+    and runtime inputs before production use.'

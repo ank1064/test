@@ -1,0 +1,36 @@
+template:
+  name: GB Verify Tpl
+  identifier: gb_verify_tpl
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  versionLabel: v1
+  type: Pipeline
+  spec:
+    stages:
+    - stage:
+        name: Build
+        identifier: build
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                name: Compile
+                identifier: compile
+                type: Run
+                spec:
+                  shell: Sh
+                  command: echo build
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback

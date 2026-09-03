@@ -1,0 +1,40 @@
+pipeline:
+  name: GA30 GA30-AGHB 81175679
+  identifier: ga30_ga30_aghb_81175679
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: GA30 GA30-AGHB 81175679. Review connectors, secrets,
+    and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: nodejs_docker_pipeline
+    versionLabel: 1.0.0
+    templateInputs:
+      stages:
+      - stage:
+          identifier: BuildAndTest
+          template:
+            templateInputs:
+              variables:
+              - name: nodeVersion
+                type: String
+                value: <+input>
+              - name: npmRegistry
+                type: String
+                value: <+input>
+              type: CI
+      - stage:
+          identifier: DockerBuildAndPush
+          template:
+            templateInputs:
+              variables:
+              - name: awsRegion
+                type: String
+                value: <+input>
+              - name: awsAccountId
+                type: String
+                value: <+input>
+              - name: ecrRepo
+                type: String
+                value: <+input>
+              type: CI

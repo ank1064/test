@@ -1,0 +1,79 @@
+pipeline:
+  name: DEMO REMOTE-TEMPLATIZE
+  identifier: DEMO_REMOTE_TEMPLATIZE_final160048
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        repoName: <+input>
+        build: <+input>
+  stages:
+  - stage:
+      name: CI Build
+      identifier: ci_build
+      type: CI
+      spec:
+        cloneCodebase: false
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+        execution:
+          steps:
+          - step:
+              name: Run Build
+              identifier: run_build
+              template:
+                templateRef: Step_Tpl_final160048
+                versionLabel: v1
+                templateInputs:
+                  type: Run
+                  spec:
+                    connectorRef: <+input>
+                    image: <+input>
+          - stepGroup:
+              name: Quality
+              identifier: quality
+              template:
+                templateRef: Group_Tpl_final160048
+                versionLabel: v1
+                templateInputs:
+                  steps:
+                  - step:
+                      spec:
+                        connectorRef: <+input>
+                        image: <+input>
+                  - step:
+                      spec:
+                        connectorRef: <+input>
+                        image: <+input>
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: StageRollback
+  - stage:
+      name: Package
+      identifier: package
+      template:
+        templateRef: Stage_Tpl_final160048
+        versionLabel: v1
+        templateInputs:
+          type: CI
+          spec:
+            infrastructure:
+              spec:
+                connectorRef: <+input>
+                namespace: <+input>
+            execution:
+              steps:
+              - step:
+                  spec:
+                    connectorRef: <+input>
+                    repo: <+input>
+                    tags:
+                    - <+input>

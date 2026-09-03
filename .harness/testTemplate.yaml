@@ -1,0 +1,606 @@
+template:
+  name: Python Flask CI Pipeline - gaps filled for WORKDAY-MLGATE
+  identifier: py_flask_ci_pipeline_v1_filled_ML_MLST_filled_WORKDAY_MLGATE
+  versionLabel: v1
+  type: Pipeline
+  description: Gap-filled Harness pipeline for Bamboo plan WORKDAY-MLGATE, source
+    unit ML Inference Gateway Pipeline; cloned from py_flask_ci_pipeline_v1_filled_ML_MLSTO_filled_ML_MLTRN
+  tags:
+    ci: ''
+    python: ''
+    ml: ''
+  spec:
+    stages:
+    - stage:
+        name: Data Validation
+        identifier: data_validation
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Great Expectations Validation
+                identifier: great_expectations_validation
+                spec:
+                  connectorRef: <+input>
+                  image: python:3.12-slim
+                  shell: Sh
+                  command: 'pip install great-expectations mlflow azure-ai-ml
+
+                    great_expectations checkpoint run data_quality_checkpoint
+
+                    '
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Train
+        identifier: train
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Install Dependencies and Train
+                identifier: install_and_train
+                spec:
+                  connectorRef: <+input>
+                  image: python:3.12-slim
+                  shell: Sh
+                  command: "pip install -r requirements.txt\npython train.py \\\n\
+                    \  --data-path data/processed/ \\\n  --experiment-name payments-churn-<+pipeline.sequenceId>\
+                    \ \\\n  --run-name harness-<+pipeline.sequenceId>\n"
+            - step:
+                type: Run
+                name: Save Model Artifact
+                identifier: save_model_artifact
+                spec:
+                  connectorRef: <+input>
+                  image: python:3.12-slim
+                  shell: Sh
+                  command: 'mkdir -p /harness/outputs/model
+
+                    cp -r outputs/model/* /harness/outputs/model/
+
+                    '
+        sharedPaths:
+        - /harness/outputs
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Evaluate
+        identifier: evaluate
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Offline Eval and Fairness
+                identifier: offline_eval_fairness
+                spec:
+                  connectorRef: <+input>
+                  image: python:3.12-slim
+                  shell: Sh
+                  command: "pip install -r requirements.txt\npython evaluate.py --model-path\
+                    \ outputs/model --threshold-f1 <+pipeline.variables.F1_THRESHOLD>\n\
+                    python eval/offline_eval.py \\\n  --model outputs/model \\\n \
+                    \ --fairness-threshold <+pipeline.variables.FAIRNESS_THRESHOLD>\
+                    \ \\\n  --report reports/eval.json\n"
+            - step:
+                type: Run
+                name: Latency Bench
+                identifier: latency_bench
+                spec:
+                  connectorRef: <+input>
+                  image: python:3.12-slim
+                  shell: Sh
+                  command: "pip install -r requirements.txt\npython eval/latency_bench.py\
+                    \ \\\n  --model outputs/model \\\n  --p99-budget-ms <+pipeline.variables.LATENCY_P99_MS_BUDGET>\n"
+        sharedPaths:
+        - /harness/outputs
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Security Scan
+        identifier: security_scan
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: AquaTrivy
+                name: Trivy Filesystem Scan
+                identifier: trivy_filesystem_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+input>
+                    variant: <+input>
+                  advanced:
+                    log:
+                      level: info
+                  privileged: true
+            - step:
+                type: Bandit
+                name: Bandit SAST Scan
+                identifier: bandit_sast_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+input>
+                    variant: <+input>
+                  advanced:
+                    log:
+                      level: info
+            - step:
+                type: Sonarqube
+                name: SonarQube Scan
+                identifier: sonarqube_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    detection: auto
+                    name: <+input>
+                    variant: <+input>
+                  advanced:
+                    log:
+                      level: info
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Register
+        identifier: register
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: MLflow Register Model
+                identifier: mlflow_register_model
+                spec:
+                  connectorRef: <+input>
+                  image: python:3.12-slim
+                  shell: Sh
+                  command: "pip install mlflow\nexport MLFLOW_TRACKING_USERNAME=$MLFLOW_TRACKING_USERNAME\n\
+                    export MLFLOW_TRACKING_PASSWORD=$MLFLOW_TRACKING_PASSWORD\npython\
+                    \ register_model.py \\\n  --tracking-uri <+pipeline.variables.MLFLOW_TRACKING_URI>\
+                    \ \\\n  --model-name <+pipeline.variables.MLFLOW_MODEL_NAME> \\\
+                    \n  --stage Staging\n"
+                  envVariables:
+                    MLFLOW_TRACKING_USERNAME: <+input>
+                    MLFLOW_TRACKING_PASSWORD: <+input>
+        sharedPaths:
+        - /harness/outputs
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Build and Push Runtime Image
+        identifier: build_and_push_runtime
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Prepare Triton KServe Runtime
+                identifier: prepare_triton_kserve_runtime
+                spec:
+                  connectorRef: <+input>
+                  image: python:3.12-slim
+                  shell: Sh
+                  command: "mkdir -p serving/model_repository/<+pipeline.variables.MODEL_NAME>/1\n\
+                    cp -r outputs/model/* serving/model_repository/<+pipeline.variables.MODEL_NAME>/1/\n\
+                    cat > serving/model_repository/<+pipeline.variables.MODEL_NAME>/config.pbtxt\
+                    \ <<EOF\nname: \"<+pipeline.variables.MODEL_NAME>\"\nplatform:\
+                    \ \"pytorch_libtorch\"\nmax_batch_size: 8\ninput [\n  {\n    name:\
+                    \ \"input\"\n    data_type: TYPE_FP32\n    dims: [-1]\n  }\n]\n\
+                    output [\n  {\n    name: \"output\"\n    data_type: TYPE_FP32\n\
+                    \    dims: [-1]\n  }\n]\nEOF\n"
+            - step:
+                type: BuildAndPushDockerRegistry
+                name: Build KServe Triton Runtime
+                identifier: build_kserve_triton_runtime
+                spec:
+                  connectorRef: <+input>
+                  repo: <+pipeline.variables.RUNTIME_IMAGE_REGISTRY>
+                  tags:
+                  - <+pipeline.sequenceId>
+                  - latest
+                  dockerfile: serving/Dockerfile
+                  context: serving
+                  buildArgs:
+                    MODEL_PATH: model_repository/<+pipeline.variables.MODEL_NAME>
+                    MODEL_NAME: <+pipeline.variables.MODEL_NAME>
+            - step:
+                type: AquaTrivy
+                name: Trivy Image Scan
+                identifier: trivy_image_scan
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: container
+                    detection: auto
+                    name: <+pipeline.variables.RUNTIME_IMAGE_REGISTRY>
+                    variant: <+pipeline.sequenceId>
+                  advanced:
+                    log:
+                      level: info
+                  privileged: true
+        sharedPaths:
+        - /harness/outputs
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Deploy Shadow
+        identifier: deploy_shadow
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Shadow
+                identifier: helm_deploy_shadow
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                  skipDryRun: false
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Verify Rollout
+                identifier: verify_rollout_shadow
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: "kubectl rollout status deployment/<+pipeline.variables.MODEL_NAME>\
+                        \ \\\n  --namespace <+pipeline.variables.K8S_NAMESPACE_SHADOW>\
+                        \ \\\n  --timeout=300s\n"
+                  onDelegate: true
+                timeout: 10m
+            - step:
+                type: Http
+                name: Smoke Test
+                identifier: smoke_test_shadow
+                spec:
+                  url: https://<+pipeline.variables.MODEL_NAME>-shadow.example.com/health
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                timeout: 30s
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Shadow
+                identifier: helm_rollback_shadow
+                spec: {}
+                timeout: 10m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy Staging
+        identifier: deploy_staging
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: Staging Deployment Approval
+                identifier: staging_deployment_approval
+                spec:
+                  approvalMessage: Approve deployment to staging environment with
+                    <+pipeline.variables.CANARY_WEIGHT_STAGING>% canary traffic
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                  approverInputs: []
+                timeout: 1d
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Staging Canary
+                identifier: helm_deploy_staging
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                  skipDryRun: false
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Verify Rollout
+                identifier: verify_rollout_staging
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: "kubectl rollout status deployment/<+pipeline.variables.MODEL_NAME>\
+                        \ \\\n  --namespace <+pipeline.variables.K8S_NAMESPACE_STAGING>\
+                        \ \\\n  --timeout=300s\n"
+                  onDelegate: true
+                timeout: 10m
+            - step:
+                type: Http
+                name: Smoke Test
+                identifier: smoke_test_staging
+                spec:
+                  url: https://<+pipeline.variables.MODEL_NAME>-staging.example.com/health
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                timeout: 30s
+            - step:
+                type: ShellScript
+                name: Validate Latency SLO
+                identifier: validate_latency_slo_staging
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: 'echo "Validating P99 latency is within <+pipeline.variables.LATENCY_P99_MS_BUDGET>ms
+                        budget"
+
+                        curl -s https://<+pipeline.variables.MODEL_NAME>-staging.example.com/metrics
+                        | grep p99_latency
+
+                        '
+                  onDelegate: true
+                timeout: 5m
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Staging
+                identifier: helm_rollback_staging
+                spec: {}
+                timeout: 10m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Deploy Production
+        identifier: deploy_production
+        type: Deployment
+        spec:
+          deploymentType: NativeHelm
+          service:
+            serviceRef: <+input>
+          environment:
+            environmentRef: <+input>
+            deployToAll: false
+            infrastructureDefinitions:
+            - identifier: <+input>
+          execution:
+            steps:
+            - step:
+                type: HarnessApproval
+                name: Production Deployment Approval
+                identifier: production_deployment_approval
+                spec:
+                  approvalMessage: Approve deployment to production environment with
+                    <+pipeline.variables.CANARY_WEIGHT_PROD>% canary traffic. ML Champion
+                    sign-off required.
+                  includePipelineExecutionHistory: true
+                  isAutoRejectEnabled: false
+                  approvers:
+                    userGroups:
+                    - <+input>
+                    minimumCount: 1
+                    disallowPipelineExecutor: false
+                  approverInputs: []
+                timeout: 1d
+            - step:
+                type: HelmDeploy
+                name: Helm Deploy Production Canary
+                identifier: helm_deploy_production
+                spec:
+                  ignoreReleaseHistFailStatus: false
+                  skipDryRun: false
+                timeout: 10m
+            - step:
+                type: ShellScript
+                name: Verify Rollout
+                identifier: verify_rollout_production
+                spec:
+                  shell: Bash
+                  source:
+                    type: Inline
+                    spec:
+                      script: "kubectl rollout status deployment/<+pipeline.variables.MODEL_NAME>\
+                        \ \\\n  --namespace <+pipeline.variables.K8S_NAMESPACE_PROD>\
+                        \ \\\n  --timeout=300s\n"
+                  onDelegate: true
+                timeout: 10m
+            - step:
+                type: Http
+                name: Smoke Test
+                identifier: smoke_test_production
+                spec:
+                  url: https://<+pipeline.variables.MODEL_NAME>-production.example.com/health
+                  method: GET
+                  assertion: <+httpResponseCode> == 200
+                timeout: 30s
+            - step:
+                type: Http
+                name: Notify Release
+                identifier: notify_release
+                spec:
+                  url: <+pipeline.variables.SLACK_WEBHOOK_URL>
+                  method: POST
+                  headers:
+                  - key: Content-Type
+                    value: application/json
+                  requestBody: '{"text": "ML Gateway model <+pipeline.sequenceId>
+                    deployed to production with <+pipeline.variables.CANARY_WEIGHT_PROD>%
+                    canary traffic"}'
+                  assertion: <+httpResponseCode> == 200
+                timeout: 30s
+            rollbackSteps:
+            - step:
+                type: HelmRollback
+                name: Helm Rollback Production
+                identifier: helm_rollback_production
+                spec: {}
+                timeout: 10m
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    variables:
+    - name: F1_THRESHOLD
+      type: String
+      value: '0.85'
+      description: Minimum F1 score threshold for model evaluation gate.
+    - name: MLFLOW_TRACKING_URI
+      type: String
+      value: <+input>
+      description: MLflow tracking server URI for model registration.
+    - name: MLFLOW_MODEL_NAME
+      type: String
+      value: workday-inference-gateway
+      description: Name of the model to register in MLflow.
+    - name: MODEL_NAME
+      type: String
+      value: workday-inference-gateway
+      description: Name of the ML inference gateway model.
+    - name: RUNTIME_IMAGE_REGISTRY
+      type: String
+      value: <+input>
+      description: Container registry for KServe/Triton runtime images.
+    - name: K8S_NAMESPACE_SHADOW
+      type: String
+      value: wd-mlgate-shadow
+      description: Kubernetes namespace for shadow environment.
+    - name: K8S_NAMESPACE_STAGING
+      type: String
+      value: wd-mlgate-staging
+      description: Kubernetes namespace for staging environment.
+    - name: K8S_NAMESPACE_PROD
+      type: String
+      value: wd-mlgate-prod
+      description: Kubernetes namespace for production environment.
+    - name: CANARY_WEIGHT_STAGING
+      type: String
+      value: '15'
+      description: Canary traffic percentage for staging deployment.
+    - name: CANARY_WEIGHT_PROD
+      type: String
+      value: '20'
+      description: Canary traffic percentage for production deployment.
+    - name: LATENCY_P99_MS_BUDGET
+      type: String
+      value: '120'
+      description: P99 latency budget in milliseconds for inference endpoint.
+    - name: FAIRNESS_THRESHOLD
+      type: String
+      value: '0.8'
+      description: Minimum fairness threshold for model evaluation.
+    - name: SLACK_WEBHOOK_URL
+      type: String
+      value: <+input>
+      description: Slack webhook URL for release notifications.

@@ -1,0 +1,98 @@
+pipeline:
+  name: Workday_Integration_Mesh_-_Mixed_Deploy_CI_CD_Gap_Fill
+  identifier: Workday_Integration_Mesh___Mixed_Deploy_CI_CD_Gap_Fill
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  tags:
+    ai_generated: ''
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        build:
+          type: branch
+          spec:
+            branch: <+input>
+  stages:
+  - stage:
+      name: CI Build
+      identifier: CI_Build
+      type: CI
+      spec:
+        cloneCodebase: true
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: Linux
+        execution:
+          steps:
+          - step:
+              type: Run
+              name: Run Build
+              identifier: Run_Build
+              spec:
+                connectorRef: <+input>
+                image: <+input>
+                shell: Sh
+                command: <+input>
+          - step:
+              type: BuildAndPushDockerRegistry
+              name: Build and Push
+              identifier: Build_and_Push
+              spec:
+                connectorRef: <+input>
+                repo: <+input>
+                tags:
+                - <+pipeline.sequenceId>
+        platform:
+          os: Linux
+          arch: Amd64
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: MarkAsFailure
+  - stage:
+      name: Deploy default
+      identifier: Deploy_default
+      type: Deployment
+      spec:
+        deploymentType: Kubernetes
+        service:
+          serviceRef: <+input>
+        environment:
+          environmentRef: <+input>
+          deployToAll: false
+          infrastructureDefinitions:
+          - identifier: <+input>
+        execution:
+          steps:
+          - step:
+              type: K8sRollingDeploy
+              name: Rolling Deployment
+              identifier: Rolling_Deployment
+              spec:
+                skipDryRun: false
+                pruningEnabled: false
+              timeout: 10m
+          rollbackSteps:
+          - step:
+              type: K8sRollingRollback
+              name: Rolling Rollback
+              identifier: Rolling_Rollback
+              spec:
+                pruningEnabled: false
+              timeout: 10m
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: StageRollback
+  description: 'Migrated pipeline: Workday_Integration_Mesh_-_Mixed_Deploy_CI_CD_Gap_Fill.
+    Review connectors, secrets, and runtime inputs before production use.'

@@ -1,0 +1,90 @@
+pipeline:
+  name: DEMO REMOTE-TEMPLATIZE
+  identifier: DEMO_REMOTE_CHK_final155956
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        repoName: <+input>
+        build: <+input>
+  stages:
+  - stage:
+      name: CI Build
+      identifier: ci_build
+      type: CI
+      spec:
+        cloneCodebase: false
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+        execution:
+          steps:
+          - step:
+              name: Run Build
+              identifier: run_build
+              type: Run
+              spec:
+                connectorRef: <+input>
+                image: <+input>
+                shell: Sh
+                command: mvn -B -DskipTests package
+          - stepGroup:
+              name: Quality
+              identifier: quality
+              steps:
+              - step:
+                  name: Unit Tests
+                  identifier: unit_tests
+                  type: Run
+                  spec:
+                    connectorRef: <+input>
+                    image: <+input>
+                    shell: Sh
+                    command: mvn -B test
+              - step:
+                  name: Lint
+                  identifier: lint
+                  type: Run
+                  spec:
+                    connectorRef: <+input>
+                    image: <+input>
+                    shell: Sh
+                    command: mvn -B checkstyle:check
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: StageRollback
+  - stage:
+      name: Package
+      identifier: package
+      type: CI
+      spec:
+        cloneCodebase: false
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+        execution:
+          steps:
+          - step:
+              name: Build and Push
+              identifier: build_and_push
+              type: BuildAndPushDockerRegistry
+              spec:
+                connectorRef: <+input>
+                repo: <+input>
+                tags:
+                - <+input>
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: StageRollback

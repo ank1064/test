@@ -1,0 +1,61 @@
+pipeline:
+  name: Workday Benefits - Deploy_remote
+  identifier: workday_benefits_deploy_remote
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: 'Migrated pipeline: Workday Benefits - Deploy_remote. Review connectors,
+    secrets, and runtime inputs before production use.'
+  tags: {}
+  template:
+    templateRef: poc_whole_pipeline_tpl_0718083234_fi_filled_WORKDAY_BENEFITS
+    versionLabel: v1
+    templateInputs:
+      variables:
+      - name: ECR_REPO
+        type: String
+        value: <+input>
+      - name: APP_NAME
+        type: String
+        value: <+input>
+      - name: SONAR_URL
+        type: String
+        value: <+input>
+      - name: DEPLOY_HOST_DEV
+        type: String
+        value: <+input>
+      - name: DEPLOY_HOST_PROD
+        type: String
+        value: <+input>
+      - name: K8S_NAMESPACE_PREFIX
+        type: String
+        value: <+input>
+      - name: SONAR_PROJECT_KEY
+        type: String
+        value: <+input>
+      properties:
+        ci:
+          codebase:
+            connectorRef: <+input>
+            repoName: <+input>
+            build:
+              spec:
+                branch: <+input>
+      stages:
+      - stage:
+          identifier: deploy_dev
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions: <+input>
+      - stage:
+          identifier: deploy_production
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions: <+input>

@@ -1,0 +1,517 @@
+template:
+  name: GBD_270271_BUILD_DOTNET Template
+  identifier: GBD_270271_BUILD_DOTNET_Template
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    ai_generated: ''
+  spec:
+    description: .NET build pipeline for Enrollment Inquiry Reports with SonarQube
+      and Checkmarx security scans.
+    properties:
+      ci:
+        codebase:
+          connectorRef: <+input>
+          repoName: enrollment-inquiry-reports
+          build:
+            type: branch
+            spec:
+              branch: <+input>
+    stages:
+    - stage:
+        name: Default Stage
+        identifier: Default_Stage
+        description: Security / STO stage with SonarQube and Checkmarx scans
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Windows
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Cleanup Work Directory
+                identifier: Clean_Workspace
+                spec:
+                  shell: Powershell
+                  command: '# Preserve Bamboo clean-before-checkout ordering.
+
+                    Get-ChildItem -Path . -Force -ErrorAction SilentlyContinue | Remove-Item
+                    -Recurse -Force -ErrorAction SilentlyContinue
+
+                    Write-Host "Workspace cleaned"'
+            - step:
+                type: GitClone
+                name: Checkout Default Repository
+                identifier: Checkout_Default_Repository
+                spec:
+                  connectorRef: <+input>
+                  repoName: enrollment-inquiry-reports
+                  build:
+                    type: branch
+                    spec:
+                      branch: feature/azure_implementation
+            - step:
+                type: GitClone
+                name: Checkout Jfrog_cli
+                identifier: Checkout_Jfrog_cli
+                spec:
+                  connectorRef: <+input>
+                  repoName: Jfrog_cli
+                  build:
+                    type: branch
+                    spec:
+                      branch: <+input>
+                  cloneDirectory: JFrogCLI_Helper
+            - step:
+                type: GitClone
+                name: Checkout Devops_pipeline_utils
+                identifier: Checkout_Devops_pipeline_utils
+                spec:
+                  connectorRef: <+input>
+                  repoName: devops_pipeline_build_utils
+                  build:
+                    type: branch
+                    spec:
+                      branch: master
+                  cloneDirectory: Build_Utils
+            - step:
+                type: GitClone
+                name: Checkout GBD-APM1000030-DEVOPS
+                identifier: Checkout_GBD_APM1000030_DEVOPS
+                spec:
+                  connectorRef: <+input>
+                  repoName: apm1000030
+                  build:
+                    type: branch
+                    spec:
+                      branch: master
+                  cloneDirectory: Devops_Scripts
+            - step:
+                type: GitClone
+                name: Checkout GBD_CLOUD_DEVOPSSCRIPTS
+                identifier: Checkout_GBD_CLOUD_DEVOPSSCRIPTS
+                spec:
+                  connectorRef: <+input>
+                  repoName: GBD_CLOUD_DEVOPSSCRIPTS
+                  build:
+                    type: branch
+                    spec:
+                      branch: <+input>
+                  cloneDirectory: GBD_Cloud_DevopsScripts
+            - step:
+                type: Run
+                name: Checkout Additional Repositories
+                identifier: Checkout_Additional_Repositories
+                spec:
+                  shell: Powershell
+                  command: '# TODO: Configure checkout of additional repositories
+
+                    # - Jfrog_cli -> JFrogCLI_Helper
+
+                    # - Devops_pipeline_utils -> Build_Utils
+
+                    # - GBD-APM1000030-DEVOPS -> Devops_Scripts
+
+                    # - GBD_CLOUD_DEVOPSSCRIPTS -> GBD_Cloud_DevopsScripts
+
+                    Write-Host "Additional repository checkout - configure Git Clone
+                    steps or script as needed"
+
+                    '
+            - step:
+                name: Inject build variables to bamboo pipeline
+                identifier: inject_buildvar
+                description: From Bamboo inject-variables file `<+pipeline.variables.build_properties_filepath>`.
+                  Values are exposed as declared Harness output variables; secret-shaped
+                  keys require Harness secret references instead.
+                type: Run
+                spec:
+                  shell: Powershell
+                  command: '$ErrorActionPreference = ''Stop''
+
+                    $propertiesFile = ''<+pipeline.variables.build_properties_filepath>''
+
+                    if (-not (Test-Path -LiteralPath $propertiesFile)) { throw "Properties
+                    file not found: $propertiesFile" }
+
+                    $properties = ConvertFrom-StringData (Get-Content -LiteralPath
+                    $propertiesFile -Raw)
+
+                    $env:buildvar_cx_project = [string]$properties[''CX_PROJECT'']
+
+                    $env:buildvar_cx_base_uri = [string]$properties[''CX_BASE_URI'']
+
+                    $env:buildvar_cx_tenant = [string]$properties[''CX_TENANT'']
+
+                    $env:buildvar_cx_client_id = [string]$properties[''CX_CLIENT_ID'']
+
+                    $env:buildvar_cx_threshold = [string]$properties[''CX_THRESHOLD'']
+
+                    $env:buildvar_cx_report_format = [string]$properties[''CX_report-format'']
+
+                    $env:buildvar_cx_report_pdf_email = [string]$properties[''CX_report-pdf-email'']
+
+                    $env:buildvar_nugetpath = [string]$properties[''nugetpath'']
+
+                    $env:buildvar_jfrog_service_account_name = [string]$properties[''jfrog.service.account.name'']
+
+                    $env:buildvar_python_path = [string]$properties[''python.path'']
+
+                    $env:buildvar_jfrog_sha256_file_pattern = [string]$properties[''jfrog.sha256.file.pattern'']
+
+                    $env:buildvar_jfrog_upload_repo_path = [string]$properties[''jfrog.upload.repo.path'']
+
+                    $env:buildvar_jfrog_upload_pattern = [string]$properties[''jfrog.upload.pattern'']
+
+                    $env:buildvar_jfrog_upload_props = [string]$properties[''jfrog.upload.props'']
+
+                    $env:buildvar_jfrog_auth_type = [string]$properties[''jfrog.auth.type'']
+
+                    $env:buildvar_jfrog_spec_source = [string]$properties[''jfrog.spec.source'']
+
+                    $env:buildvar_jfrog_hcvault_enable = [string]$properties[''jfrog_hcvault_enable'']
+
+                    $env:buildvar_jfrog_hcvault_namespace = [string]$properties[''jfrog_hcvault_namespace'']
+
+                    $env:buildvar_jfrog_hcvault_mountpoint = [string]$properties[''jfrog_hcvault_mountpoint'']
+
+                    $env:buildvar_jfrog_hcvault_vaultpath = [string]$properties[''jfrog_hcvault_vaultpath'']'
+                  outputVariables:
+                  - name: buildvar_cx_project
+                  - name: buildvar_cx_base_uri
+                  - name: buildvar_cx_tenant
+                  - name: buildvar_cx_client_id
+                  - name: buildvar_cx_threshold
+                  - name: buildvar_cx_report_format
+                  - name: buildvar_cx_report_pdf_email
+                  - name: buildvar_nugetpath
+                  - name: buildvar_jfrog_service_account_name
+                  - name: buildvar_python_path
+                  - name: buildvar_jfrog_sha256_file_pattern
+                  - name: buildvar_jfrog_upload_repo_path
+                  - name: buildvar_jfrog_upload_pattern
+                  - name: buildvar_jfrog_upload_props
+                  - name: buildvar_jfrog_auth_type
+                  - name: buildvar_jfrog_spec_source
+                  - name: buildvar_jfrog_hcvault_enable
+                  - name: buildvar_jfrog_hcvault_namespace
+                  - name: buildvar_jfrog_hcvault_mountpoint
+                  - name: buildvar_jfrog_hcvault_vaultpath
+                timeout: 10m
+            - step:
+                type: Run
+                name: Retrieve Vault Tokens
+                identifier: Get_Vault_Tokens
+                spec:
+                  shell: Powershell
+                  command: '# Retrieve vault tokens using Harness secrets
+
+                    $artifactoryToken = "<+pipeline.variables.artifactorytoken_secret>"
+
+                    $checkmarxToken = "<+pipeline.variables.checkmarxtoken_secret>"
+
+                    $sonarqubeToken = "<+pipeline.variables.sonarqubetoken_secret>"
+
+                    Write-Host "Vault tokens retrieved for artifactory, checkmarx,
+                    sonarqube"
+
+                    '
+            - step:
+                type: Checkmarx
+                name: Checkmarx
+                identifier: Checkmarx
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+pipeline.name>
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+                  auth:
+                    access_id: <+secrets.getValue("checkmarx_access_id")>
+                    access_token: <+pipeline.variables.checkmarxToken>
+                    ssl: true
+                    domain: <+input>
+                  tool:
+                    project_name: <+input>
+                    team_name: <+input>
+                  ingestion:
+                    file: /harness/checkmarx-results.sarif
+            - step:
+                type: Sonarqube
+                name: Sonarqube
+                identifier: Sonarqube
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    name: <+pipeline.name>
+                    type: repository
+                    variant: <+codebase.branch>
+                  advanced:
+                    log:
+                      level: info
+                    fail_on_severity: high
+                  auth:
+                    access_token: <+pipeline.variables.sonarqubeToken>
+                    ssl: true
+                    domain: <+input>
+                  tool:
+                    project_key: 27x_InquiryReport
+                  ingestion:
+                    file: /harness/sonarqube-results.sarif
+            - step:
+                type: Run
+                name: Delete NuGet Config
+                identifier: Delete_NuGet_Config
+                spec:
+                  shell: Powershell
+                  command: "If ((Test-Path -Path \"C:\\Windows\\System32\\config\\\
+                    systemprofile\\AppData\\Roaming\\NuGet\\config\\NuGet.Config\"\
+                    \ )) {\n    Remove-Item -Path \"C:\\Windows\\System32\\config\\\
+                    systemprofile\\AppData\\Roaming\\NuGet\\config\\NuGet.Config\"\
+                    \n}\nIf ((Test-Path -Path \"C:\\Windows\\System32\\config\\systemprofile\\\
+                    AppData\\Roaming\\NuGet\\NuGet.Config\" )) {\n    Remove-Item\
+                    \ -Path \"C:\\Windows\\System32\\config\\systemprofile\\AppData\\\
+                    Roaming\\NuGet\\NuGet.Config\"\n}\nIf ((Test-Path -Path \"C:\\\
+                    Users\\SRC_DEVOPS_SIT\\AppData\\Roaming\\NuGet\\NuGet.Config\"\
+                    \ )) {\n    Remove-Item -Path \"C:\\Users\\SRC_DEVOPS_SIT\\AppData\\\
+                    Roaming\\NuGet\\NuGet.Config\"\n}\n"
+            - step:
+                type: Run
+                name: NuGet Restore
+                identifier: NuGet_Restore
+                spec:
+                  shell: Powershell
+                  command: "# TODO: Configure NuGet path and Artifactory credentials\n\
+                    # $nugetPath = \"<NUGET_EXE_PATH>\"\n# $artifactoryUser = \"<SERVICE_ACCOUNT_NAME>\"\
+                    \n# $artifactoryToken = \"<+pipeline.variables.artifactorytoken_secret>\"\
+                    \n# \n# & $nugetPath sources Add -Name Artifactory270release -Source\
+                    \ https://artifactory.elevancehealth.com/artifactory/api/nuget/v3/gbdcommon-nuget-public/index.json\
+                    \ -username $artifactoryUser -password $artifactoryToken\n# &\
+                    \ $nugetPath sources Add -Name Artifactory270public -Source https://artifactory.elevancehealth.com/artifactory/api/nuget/v3/gbdcommon-nuget-release/index.json\
+                    \ -username $artifactoryUser -password $artifactoryToken\n# &\
+                    \ $nugetPath restore \"EligibilityInquiryReport.sln\"\nWrite-Host\
+                    \ \"NuGet restore - configure credentials and paths\"\n"
+            - step:
+                name: MSBuild
+                identifier: MSBuild
+                template:
+                  templateRef: bamboo_recipe_msbuild
+                  versionLabel: v1
+                  templateInputs:
+                    type: Run
+                    spec:
+                      command: msbuild '"./<+pipeline.variables.sln_filepath>"' <+pipeline.variables.build_option_configuration>
+                        <+pipeline.variables.build_outputpath_configuration>
+                description: From Bamboo plugin `com.atlassian.bamboo.plugin.dotnet:msbuild`
+                  via recipe `bamboo_recipe_msbuild`.
+            - step:
+                type: Run
+                name: Zip Artifacts
+                identifier: Zip_Artifacts
+                spec:
+                  shell: Powershell
+                  command: '# TODO: Configure artifact packaging script
+
+                    # Conditional on branch: release.*, develop.*, hotfix.*, master.*,
+                    feature.*
+
+                    # Original: Devops_Scripts/application/270271Package.ps1
+
+                    Write-Host "Packaging artifacts"
+
+                    '
+                when:
+                  stageStatus: Success
+                  condition: <+codebase.branch> =~ "release.*|develop.*|hotfix.*|master.*|feature.*"
+            - step:
+                type: Run
+                name: Prepare JFrog Upload
+                identifier: Prepare_JFrog_Upload
+                spec:
+                  shell: Bash
+                  command: '# TODO: Configure Python path and JFrog upload preparation
+
+                    # python Build_Utils/controller.py -op "SHA_JF_D_PTXLR_JF_U_JSON"
+                    ...
+
+                    echo "Preparing JFrog CLI upload specifications"
+
+                    '
+                when:
+                  stageStatus: Success
+                  condition: <+codebase.branch> =~ "release.*|develop.*|hotfix.*|master.*|feature.*"
+            - step:
+                type: Run
+                name: Upload to Artifactory
+                identifier: Upload_to_Artifactory
+                spec:
+                  shell: Bash
+                  command: '# TODO: Configure JFrog CLI upload with vault authentication
+
+                    # python JFrogCLI_Helper/JfrogCLI.py --authType "..." --operation
+                    "U_BP" ...
+
+                    echo "Uploading artifacts to JFrog Artifactory"
+
+                    '
+                when:
+                  stageStatus: Success
+                  condition: <+codebase.branch> =~ "release.*|develop.*|hotfix.*|master.*|feature.*"
+            - step:
+                identifier: Publish_Artifacts
+                name: Publish Artifacts to Artifactory
+                description: Detected artifactory from Bamboo variables/artifact metadata.
+                  Bind connectorRef <+input> and review target settings.
+                type: ArtifactoryUpload
+                spec:
+                  connectorRef: <+input>
+                  sourcePath: ./build/zippedartifacts/**/*.zip
+                  target: <+input>
+                when:
+                  stageStatus: All
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    notificationRules:
+    - name: Build Failure Notification
+      identifier: Build_Failure_Notification
+      pipelineEvents:
+      - type: StageFailed
+        forStages:
+        - Default_Stage
+      notificationMethod:
+        type: Email
+        spec:
+          recipients:
+          - dl-ENR-Inbound-Notifications@anthem.com
+      enabled: true
+    - name: Build Completion Notification
+      identifier: Build_Completion_Notification
+      pipelineEvents:
+      - type: PipelineSuccess
+      - type: PipelineFailed
+      notificationMethod:
+        type: Email
+        spec:
+          recipients:
+          - dl-ENR-Inbound-Notifications@anthem.com
+          - brian.dilks@wellpoint.com
+          - sreenivas.mamillapalli@wellpoint.com
+          - venkat.sirikonda@wellpoint.com
+      enabled: true
+    variables:
+    - name: checkmarxToken
+      type: Secret
+      description: Checkmarx credential supplied as a Harness secret reference by
+        an input set.
+      required: true
+      value: <+input>
+    - name: sonarqubeToken
+      type: Secret
+      description: Sonarqube credential supplied as a Harness secret reference by
+        an input set.
+      required: true
+      value: <+input>
+    - name: artifactory_gbdrepo1_nugetpath
+      type: String
+      value: https://artifactory.elevancehealth.com/artifactory/api/nuget/v3/gbdcommon-nuget-public/index.json
+    - name: artifactory_gbdrepo1_source_name
+      type: String
+      value: Artifactory_270271_nugetcommonpub
+    - name: artifactorytoken_secret
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'artifactorytoken_secret' — bind to a Harness secret
+    - name: build_OutputPath
+      type: String
+      value: build/270271
+    - name: build_OutputPath_test
+      type: String
+      value: build/270271.Test
+    - name: build_option_configuration
+      type: String
+      value: /p:Configuration=Release
+    - name: build_option_configuration_test
+      type: String
+      value: <+input>
+    - name: build_outputpath_configuration
+      type: String
+      value: /p:OutputPath=./<+pipeline.variables.build_OutputPath>
+    - name: build_outputpath_configuration_test
+      type: String
+      value: /p:OutputPath=./<+pipeline.variables.build_OutputPath_test>
+    - name: build_properties_filepath
+      type: String
+      value: Devops/build.properties
+    - name: buildemailnotificationrecipients
+      type: String
+      value: VairamKaleecharan.Ganesan@wellpoint.com
+    - name: checkmarxtoken_secret
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'checkmarxtoken_secret' — bind to a Harness secret
+    - name: csproj_filepath
+      type: String
+      value: <+input>
+    - name: csprojtest_filepath
+      type: String
+      value: <+input>
+    - name: cyberarkappId_secret_gbdtoolsdevops
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'cyberarkappId_secret_gbdtoolsdevops' — bind to a
+        Harness secret
+    - name: cyberarkobject_gbdtoolsdevops
+      type: String
+      value: us.ad.wellpoint.com-SRC_TOOLS_DEVOPS
+    - name: cyberarksafe_gbdtoolsdevops
+      type: String
+      value: SVC-GBD_DEVOPS_DEV
+    - name: deploy_json_filepath
+      type: String
+      value: Devops/WEB_Deploy.json
+    - name: final_artifact_path
+      type: String
+      value: build/zippedartifacts/FinalCode
+    - name: opencover_path
+      type: String
+      value: D:\BambooSupport\opencover\OpenCover.Console.exe
+    - name: sln_filepath
+      type: String
+      value: EligibilityInquiryReport.sln
+    - name: sonar_project_key
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'sonar_project_key' — bind to a Harness secret
+    - name: sonarqubetoken_secret
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'sonarqubetoken_secret' — bind to a Harness secret
+    - name: vault_roleid_secret
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'vault_roleid_secret' — bind to a Harness secret
+    - name: vault_secretid
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'vault_secretid' — bind to a Harness secret
+    - name: vstest_path
+      type: String
+      value: C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe

@@ -1,0 +1,421 @@
+template:
+  name: GBD_270271_BUILD_DOTNET Template
+  identifier: GBD_270271_BUILD_DOTNET_Template_new
+  orgIdentifier: nglabs
+  projectIdentifier: CSETest1
+  versionLabel: v1
+  type: Pipeline
+  tags:
+    ai_generated: ''
+    migrated_from: bamboo
+  spec:
+    properties:
+      ci:
+        codebase:
+          connectorRef: <+input>
+          build:
+            type: branch
+            spec:
+              branch: <+input>
+          repoName: enrollment-inquiry-reports
+    stages:
+    - stage:
+        name: Security_Scan
+        identifier: Security_Scan
+        description: Security / STO stage with Sonarqube and Checkmarx scans Includes
+          source-grounded build recipes and native security steps.
+        type: CI
+        spec:
+          cloneCodebase: false
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Cleanup Work Directory
+                identifier: Clean_Workspace
+                spec:
+                  shell: Sh
+                  command: '# Preserve Bamboo clean-before-checkout ordering.
+
+                    find . -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null ||
+                    true
+
+                    echo "Workspace cleaned"'
+                  connectorRef: account.harnessImage
+                  image: alpine
+            - step:
+                type: GitClone
+                name: Checkout Default Repository
+                identifier: Checkout_Default_Repository
+                spec:
+                  connectorRef: <+input>
+                  repoName: enrollment-inquiry-reports
+                  build:
+                    type: branch
+                    spec:
+                      branch: feature/azure_implementation
+            - step:
+                type: GitClone
+                name: Checkout Jfrog_cli
+                identifier: Checkout_Jfrog_cli
+                spec:
+                  connectorRef: <+input>
+                  repoName: Jfrog_cli
+                  build:
+                    type: branch
+                    spec:
+                      branch: <+input>
+                  cloneDirectory: JFrogCLI_Helper
+            - step:
+                type: GitClone
+                name: Checkout Devops_pipeline_utils
+                identifier: Checkout_Devops_pipeline_utils
+                spec:
+                  connectorRef: <+input>
+                  repoName: devops_pipeline_build_utils
+                  build:
+                    type: branch
+                    spec:
+                      branch: master
+                  cloneDirectory: Build_Utils
+            - step:
+                type: GitClone
+                name: Checkout GBD-APM1000030-DEVOPS
+                identifier: Checkout_GBD_APM1000030_DEVOPS
+                spec:
+                  connectorRef: <+input>
+                  repoName: apm1000030
+                  build:
+                    type: branch
+                    spec:
+                      branch: master
+                  cloneDirectory: Devops_Scripts
+            - step:
+                type: GitClone
+                name: Checkout GBD_CLOUD_DEVOPSSCRIPTS
+                identifier: Checkout_GBD_CLOUD_DEVOPSSCRIPTS
+                spec:
+                  connectorRef: <+input>
+                  repoName: GBD_CLOUD_DEVOPSSCRIPTS
+                  build:
+                    type: branch
+                    spec:
+                      branch: <+input>
+                  cloneDirectory: GBD_Cloud_DevopsScripts
+            - step:
+                name: Inject build variables to bamboo pipeline
+                identifier: inject_buildvar
+                description: From Bamboo inject-variables file `<+pipeline.variables.build_properties_filepath>`.
+                  Values are exposed as declared Harness output variables; secret-shaped
+                  keys require Harness secret references instead.
+                type: Run
+                spec:
+                  connectorRef: account.harnessImage
+                  image: alpine
+                  shell: Sh
+                  command: 'set -eu
+
+                    properties_file=''<+pipeline.variables.build_properties_filepath>''
+
+                    test -f "$properties_file"
+
+                    buildvar_cx_project=$(awk -F= -v wanted=CX_PROJECT ''$1 == wanted
+                    {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_cx_project
+
+                    buildvar_cx_base_uri=$(awk -F= -v wanted=CX_BASE_URI ''$1 == wanted
+                    {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_cx_base_uri
+
+                    buildvar_cx_tenant=$(awk -F= -v wanted=CX_TENANT ''$1 == wanted
+                    {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_cx_tenant
+
+                    buildvar_cx_client_id=$(awk -F= -v wanted=CX_CLIENT_ID ''$1 ==
+                    wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_cx_client_id
+
+                    buildvar_cx_threshold=$(awk -F= -v wanted=CX_THRESHOLD ''$1 ==
+                    wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_cx_threshold
+
+                    buildvar_cx_report_format=$(awk -F= -v wanted=CX_report-format
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_cx_report_format
+
+                    buildvar_cx_report_pdf_email=$(awk -F= -v wanted=CX_report-pdf-email
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_cx_report_pdf_email
+
+                    buildvar_nugetpath=$(awk -F= -v wanted=nugetpath ''$1 == wanted
+                    {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_nugetpath
+
+                    buildvar_jfrog_service_account_name=$(awk -F= -v wanted=jfrog.service.account.name
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_service_account_name
+
+                    buildvar_python_path=$(awk -F= -v wanted=python.path ''$1 == wanted
+                    {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_python_path
+
+                    buildvar_jfrog_sha256_file_pattern=$(awk -F= -v wanted=jfrog.sha256.file.pattern
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_sha256_file_pattern
+
+                    buildvar_jfrog_upload_repo_path=$(awk -F= -v wanted=jfrog.upload.repo.path
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_upload_repo_path
+
+                    buildvar_jfrog_upload_pattern=$(awk -F= -v wanted=jfrog.upload.pattern
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_upload_pattern
+
+                    buildvar_jfrog_upload_props=$(awk -F= -v wanted=jfrog.upload.props
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_upload_props
+
+                    buildvar_jfrog_auth_type=$(awk -F= -v wanted=jfrog.auth.type ''$1
+                    == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_auth_type
+
+                    buildvar_jfrog_spec_source=$(awk -F= -v wanted=jfrog.spec.source
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_spec_source
+
+                    buildvar_jfrog_hcvault_enable=$(awk -F= -v wanted=jfrog_hcvault_enable
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_hcvault_enable
+
+                    buildvar_jfrog_hcvault_namespace=$(awk -F= -v wanted=jfrog_hcvault_namespace
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_hcvault_namespace
+
+                    buildvar_jfrog_hcvault_mountpoint=$(awk -F= -v wanted=jfrog_hcvault_mountpoint
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_hcvault_mountpoint
+
+                    buildvar_jfrog_hcvault_vaultpath=$(awk -F= -v wanted=jfrog_hcvault_vaultpath
+                    ''$1 == wanted {sub(/^[^=]*=/, ""); print; exit}'' "$properties_file")
+
+                    export buildvar_jfrog_hcvault_vaultpath'
+                  outputVariables:
+                  - name: buildvar_cx_project
+                  - name: buildvar_cx_base_uri
+                  - name: buildvar_cx_tenant
+                  - name: buildvar_cx_client_id
+                  - name: buildvar_cx_threshold
+                  - name: buildvar_cx_report_format
+                  - name: buildvar_cx_report_pdf_email
+                  - name: buildvar_nugetpath
+                  - name: buildvar_jfrog_service_account_name
+                  - name: buildvar_python_path
+                  - name: buildvar_jfrog_sha256_file_pattern
+                  - name: buildvar_jfrog_upload_repo_path
+                  - name: buildvar_jfrog_upload_pattern
+                  - name: buildvar_jfrog_upload_props
+                  - name: buildvar_jfrog_auth_type
+                  - name: buildvar_jfrog_spec_source
+                  - name: buildvar_jfrog_hcvault_enable
+                  - name: buildvar_jfrog_hcvault_namespace
+                  - name: buildvar_jfrog_hcvault_mountpoint
+                  - name: buildvar_jfrog_hcvault_vaultpath
+                timeout: 10m
+            - step:
+                type: Sonarqube
+                name: Sonarqube
+                identifier: Sonarqube
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    name: <+pipeline.name>
+                    variant: <+codebase.branch>
+                    detection: auto
+                  auth:
+                    access_token: <+pipeline.variables.sonarqubeToken>
+                    domain: <+input>
+                  tool:
+                    project_key: <+input>
+                  advanced:
+                    log:
+                      level: info
+            - step:
+                type: CheckmarxOne
+                name: Checkmarx
+                identifier: Checkmarx
+                spec:
+                  mode: orchestration
+                  config: default
+                  target:
+                    type: repository
+                    name: <+pipeline.name>
+                    variant: <+codebase.branch>
+                    detection: auto
+                  auth:
+                    access_token: <+pipeline.variables.checkmarxToken>
+                    access_id: <+input>
+                    domain: <+input>
+                  advanced:
+                    log:
+                      level: info
+            - step:
+                name: MSBuild for 270271 application
+                identifier: msbuild_for_270271_application
+                template:
+                  templateRef: bamboo_recipe_msbuild
+                  versionLabel: v1
+                  templateInputs:
+                    type: Run
+                    spec:
+                      command: msbuild '"./<+pipeline.variables.sln_filepath>"' <+pipeline.variables.build_option_configuration>
+                        <+pipeline.variables.build_outputpath_configuration>
+                description: From Bamboo plugin `com.atlassian.bamboo.plugin.dotnet:msbuild`
+                  via recipe `bamboo_recipe_msbuild`.
+            - step:
+                identifier: Publish_Artifacts
+                name: Publish Artifacts to Artifactory
+                description: Detected artifactory from Bamboo variables/artifact metadata.
+                  Bind connectorRef <+input> and review target settings.
+                type: ArtifactoryUpload
+                spec:
+                  connectorRef: <+input>
+                  sourcePath: ./build/zippedartifacts/**/*.zip
+                  target: <+input>
+                when:
+                  stageStatus: All
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: <+input>
+              namespace: <+input>
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    description: 'Migrated pipeline: GBD_270271_BUILD_DOTNET. Review connectors, secrets,
+      and runtime inputs before production use.'
+    variables:
+    - name: sonarqubeToken
+      type: Secret
+      description: Sonarqube credential supplied as a Harness secret reference by
+        an input set.
+      required: true
+      value: <+input>
+    - name: checkmarxToken
+      type: Secret
+      description: Checkmarx credential supplied as a Harness secret reference by
+        an input set.
+      required: true
+      value: <+input>
+    - name: artifactory_gbdrepo1_nugetpath
+      type: String
+      value: https://artifactory.elevancehealth.com/artifactory/api/nuget/v3/gbdcommon-nuget-public/index.json
+    - name: artifactory_gbdrepo1_source_name
+      type: String
+      value: Artifactory_270271_nugetcommonpub
+    - name: artifactorytoken_secret
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'artifactorytoken_secret' — bind to a Harness secret
+    - name: build_OutputPath
+      type: String
+      value: build/270271
+    - name: build_OutputPath_test
+      type: String
+      value: build/270271.Test
+    - name: build_option_configuration
+      type: String
+      value: /p:Configuration=Release
+    - name: build_option_configuration_test
+      type: String
+      value: <+input>
+    - name: build_outputpath_configuration
+      type: String
+      value: /p:OutputPath=./<+pipeline.variables.build_OutputPath>
+    - name: build_outputpath_configuration_test
+      type: String
+      value: /p:OutputPath=./<+pipeline.variables.build_OutputPath_test>
+    - name: build_properties_filepath
+      type: String
+      value: Devops/build.properties
+    - name: buildemailnotificationrecipients
+      type: String
+      value: VairamKaleecharan.Ganesan@wellpoint.com
+    - name: checkmarxtoken_secret
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'checkmarxtoken_secret' — bind to a Harness secret
+    - name: csproj_filepath
+      type: String
+      value: <+input>
+    - name: csprojtest_filepath
+      type: String
+      value: <+input>
+    - name: cyberarkappId_secret_gbdtoolsdevops
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'cyberarkappId_secret_gbdtoolsdevops' — bind to a
+        Harness secret
+    - name: cyberarkobject_gbdtoolsdevops
+      type: String
+      value: us.ad.wellpoint.com-SRC_TOOLS_DEVOPS
+    - name: cyberarksafe_gbdtoolsdevops
+      type: String
+      value: SVC-GBD_DEVOPS_DEV
+    - name: deploy_json_filepath
+      type: String
+      value: Devops/WEB_Deploy.json
+    - name: final_artifact_path
+      type: String
+      value: build/zippedartifacts/FinalCode
+    - name: opencover_path
+      type: String
+      value: D:\BambooSupport\opencover\OpenCover.Console.exe
+    - name: sln_filepath
+      type: String
+      value: EligibilityInquiryReport.sln
+    - name: sonar_project_key
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'sonar_project_key' — bind to a Harness secret
+    - name: sonarqubetoken_secret
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'sonarqubetoken_secret' — bind to a Harness secret
+    - name: vault_roleid_secret
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'vault_roleid_secret' — bind to a Harness secret
+    - name: vault_secretid
+      type: Secret
+      value: <+input>
+      description: Bamboo secret 'vault_secretid' — bind to a Harness secret
+    - name: vstest_path
+      type: String
+      value: C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe

@@ -1,0 +1,198 @@
+pipeline:
+  name: Prod_CI
+  identifier: gha_k8s_remote_642341
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        repoName: ank1064/github-actions-demo
+        build: <+input>
+        depth: 0
+  stages:
+  - stage:
+      name: Build Test Scan Publish
+      identifier: ci
+      type: CI
+      spec:
+        cloneCodebase: true
+        execution:
+          steps:
+          - step:
+              type: Run
+              name: Setup NodeJS
+              identifier: setup_nodejs
+              spec:
+                shell: Bash
+                command: 'curl -fsSL https://fnm.vercel.app/install | bash
+
+                  export PATH="/harness/.local/share/fnm:$PATH"
+
+                  eval "$(fnm env)"
+
+                  fnm install 20
+
+                  fnm use 20
+
+                  mkdir -p /harness/bin
+
+                  ln -sf "$(fnm exec --using=20 which node)" /harness/bin/node
+
+                  ln -sf "$(fnm exec --using=20 which npm)" /harness/bin/npm
+
+                  ln -sf "$(fnm exec --using=20 which npx)" /harness/bin/npx
+
+                  '
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: Run
+              name: Install dependencies
+              identifier: install_dependencies
+              spec:
+                shell: Bash
+                command: 'export PATH="/harness/bin:$PATH"
+
+                  npm install
+
+                  '
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: Run
+              name: Lint
+              identifier: lint
+              spec:
+                shell: Bash
+                command: 'export PATH="/harness/bin:$PATH"
+
+                  npm run lint
+
+                  '
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: Run
+              name: Unit tests
+              identifier: unit_tests
+              spec:
+                shell: Bash
+                command: 'export PATH="/harness/bin:$PATH"
+
+                  npm test -- --coverage
+
+                  '
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: Run
+              name: Build application
+              identifier: build_application
+              spec:
+                shell: Bash
+                command: 'export PATH="/harness/bin:$PATH"
+
+                  npm run build
+
+                  '
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: AquaTrivy
+              name: Filesystem vulnerability scan
+              identifier: filesystem_vulnerability_scan
+              spec:
+                mode: orchestration
+                config: default
+                target:
+                  type: repository
+                  detection: auto
+                  name: <+input>
+                  variant: <+input>
+                advanced:
+                  log:
+                    level: info
+                  fail_on_severity: high
+                privileged: true
+                settings:
+                  trivy_severity: CRITICAL,HIGH
+                  trivy_ignore_unfixed: 'true'
+          - step:
+              type: Gitleaks
+              name: Secret scan
+              identifier: secret_scan
+              spec:
+                mode: orchestration
+                config: default
+                target:
+                  type: repository
+                  detection: auto
+                  name: <+input>
+                  variant: <+input>
+                advanced:
+                  log:
+                    level: info
+                privileged: true
+          - step:
+              type: Run
+              name: Compute image tags
+              identifier: compute_image_tags
+              spec:
+                shell: Bash
+                command: 'SHORT_SHA=$(echo "<+codebase.commitSha>" | cut -c1-7)
+
+                  echo "IMAGE_TAG=${SHORT_SHA}"
+
+                  export IMAGE_TAG="${SHORT_SHA}"
+
+                  '
+                outputVariables:
+                - name: IMAGE_TAG
+                  type: String
+                  value: IMAGE_TAG
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: BuildAndPushDockerRegistry
+              name: Build and push Docker image
+              identifier: build_and_push_docker_image
+              spec:
+                connectorRef: <+input>
+                repo: ghcr.io/ank1064/github-actions-demo
+                tags:
+                - <+execution.steps.compute_image_tags.output.outputVariables.IMAGE_TAG>
+                - latest
+                dockerfile: Dockerfile
+                context: .
+                caching: true
+              when:
+                stageStatus: Success
+                condition: <+codebase.build.type> != "PR"
+        caching:
+          enabled: true
+          paths:
+          - node_modules
+        type: CI
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: Linux
+      timeout: 30m
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: MarkAsFailure
+  variables:
+  - name: NODE_VERSION
+    type: String
+    value: <+input>
+  description: 'Migrated pipeline: Prod CI. Review connectors, secrets, and runtime
+    inputs before production use.'

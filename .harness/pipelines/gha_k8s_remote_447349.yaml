@@ -1,0 +1,237 @@
+pipeline:
+  name: CI
+  identifier: gha_k8s_remote_447349
+  description: Migrated from GitHub Actions CI workflow
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        repoName: ank1064/github-actions-demo
+        build: <+input>
+  stages:
+  - stage:
+      name: Setup
+      identifier: setup
+      description: Reusable setup stage
+      type: CI
+      spec:
+        cloneCodebase: true
+        execution:
+          steps:
+          - stepGroup:
+              name: Print Environment
+              identifier: print_env
+              steps:
+              - step:
+                  type: Run
+                  name: Print Environment Info
+                  identifier: print
+                  spec:
+                    shell: Bash
+                    command: 'echo "Repository: <+pipeline.properties.ci.codebase.repoName>"
+
+                      echo "Branch: <+codebase.branch>"
+
+                      echo "Commit: <+codebase.commitSha>"
+
+                      echo "Actor: <+pipeline.triggeredBy.name>"
+
+                      export repo_name="<+pipeline.properties.ci.codebase.repoName>"
+
+                      export branch="<+codebase.branch>"
+
+                      '
+                    outputVariables:
+                    - name: repo_name
+                      type: String
+                      value: repo_name
+                    - name: branch
+                      type: String
+                      value: branch
+                    connectorRef: account.harnessImage
+                    image: alpine
+          - step:
+              type: Run
+              name: Set Environment Label
+              identifier: label
+              spec:
+                shell: Bash
+                command: 'echo "Target environment: production"
+
+                  export environment="production"
+
+                  '
+                outputVariables:
+                - name: environment
+                  type: String
+                  value: environment
+                connectorRef: account.harnessImage
+                image: alpine
+        type: CI
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: Linux
+      variables:
+      - name: environment
+        type: String
+        value: production
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: MarkAsFailure
+  - parallel:
+    - stage:
+        name: Validate
+        identifier: validate
+        description: Reusable validation stage
+        type: CI
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+            - stepGroup:
+                name: Validate
+                identifier: validate_group
+                steps:
+                - step:
+                    type: Run
+                    name: Run Validation
+                    identifier: validate_step
+                    spec:
+                      shell: Bash
+                      command: "echo \"Running validation (strict=true)...\"\n\nif\
+                        \ [ -f README.md ]; then\n  echo \"README.md found\"\nelse\n\
+                        \  echo \"README.md missing\"\n  exit 1\nfi\n\nif [ -d .github/workflows\
+                        \ ]; then\n  echo \"Workflows directory found\"\nelse\n  echo\
+                        \ \"Workflows directory missing\"\n  exit 1\nfi\n\necho \"\
+                        Validation passed!\"\nexport status=\"passed\"\n"
+                      outputVariables:
+                      - name: status
+                        type: String
+                        value: status
+                      connectorRef: account.harnessImage
+                      image: alpine
+          type: CI
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: <+input>
+              namespace: <+input>
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+        variables:
+        - name: strict
+          type: String
+          value: 'true'
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: Greet
+        identifier: greet
+        description: Greet job with custom Node.js action
+        type: CI
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Greet from custom action
+                identifier: greet_action
+                spec:
+                  connectorRef: account.harnessImage
+                  image: alpine
+                  shell: Sh
+                  command: echo "Action uses=./.github/actions/greet is not supported
+                    on KubernetesDirect; replace with a native or Run step."
+                timeout: 10m
+                description: "Downgraded from Action (./.github/actions/greet) \u2014\
+                  \ unsupported on KubernetesDirect"
+            - step:
+                type: Run
+                name: Show greeting output
+                identifier: show_greeting
+                spec:
+                  shell: Bash
+                  command: 'echo "<+execution.steps.greet_action.output.outputVariables.message>"
+
+                    '
+                  connectorRef: account.harnessImage
+                  image: alpine
+          type: CI
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: <+input>
+              namespace: <+input>
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+  - stage:
+      name: Summary
+      identifier: summary
+      description: Pipeline summary stage
+      type: CI
+      spec:
+        cloneCodebase: false
+        execution:
+          steps:
+          - step:
+              type: Run
+              name: Pipeline Summary
+              identifier: pipeline_summary
+              spec:
+                shell: Bash
+                command: 'echo "=== CI Pipeline Summary ==="
+
+                  echo "Repository : <+pipeline.stages.setup.spec.execution.steps.print_env.steps.print.output.outputVariables.repo_name>"
+
+                  echo "Branch     : <+pipeline.stages.setup.spec.execution.steps.print_env.steps.print.output.outputVariables.branch>"
+
+                  echo "Environment: <+pipeline.stages.setup.spec.execution.steps.label.output.outputVariables.environment>"
+
+                  echo "Validation : <+pipeline.stages.validate.spec.execution.steps.validate_group.steps.validate_step.output.outputVariables.status>"
+
+                  echo "==========================="
+
+                  '
+                connectorRef: account.harnessImage
+                image: alpine
+        type: CI
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: Linux
+      when:
+        pipelineStatus: All
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: Ignore

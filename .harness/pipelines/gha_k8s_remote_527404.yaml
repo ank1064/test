@@ -1,0 +1,154 @@
+pipeline:
+  name: Prod_CI
+  identifier: gha_k8s_remote_527404
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        repoName: ank1064/github-actions-demo
+        build: <+input>
+  stages:
+  - stage:
+      name: Build Test Scan Publish
+      identifier: ci
+      type: CI
+      spec:
+        cloneCodebase: true
+        caching:
+          enabled: true
+        execution:
+          steps:
+          - step:
+              type: Run
+              name: Install dependencies
+              identifier: install_dependencies
+              spec:
+                shell: Bash
+                command: 'npm install
+
+                  '
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: Run
+              name: Lint
+              identifier: lint
+              spec:
+                shell: Bash
+                command: 'npm run lint
+
+                  '
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: Run
+              name: Unit tests
+              identifier: unit_tests
+              spec:
+                shell: Bash
+                command: 'npm test -- --coverage
+
+                  '
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: Run
+              name: Build application
+              identifier: build_application
+              spec:
+                shell: Bash
+                command: 'npm run build
+
+                  '
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: AquaTrivy
+              name: Filesystem vulnerability scan
+              identifier: filesystem_vulnerability_scan
+              spec:
+                mode: orchestration
+                config: default
+                target:
+                  type: repository
+                  detection: auto
+                  name: <+input>
+                  variant: <+input>
+                advanced:
+                  log:
+                    level: info
+                privileged: true
+                settings:
+                  trivy_severity: CRITICAL,HIGH
+                  trivy_ignore_unfixed: 'true'
+          - step:
+              type: Gitleaks
+              name: Secret scan
+              identifier: secret_scan
+              spec:
+                mode: orchestration
+                config: default
+                target:
+                  type: repository
+                  detection: auto
+                  name: <+input>
+                  variant: <+input>
+                advanced:
+                  log:
+                    level: info
+          - step:
+              type: Run
+              name: Extract Docker metadata
+              identifier: extract_docker_metadata
+              spec:
+                shell: Bash
+                command: "if [ \"<+codebase.branch>\" = \"main\" ]; then\n  export\
+                  \ DOCKER_TAGS=\"<+codebase.shortCommitSha>,latest\"\nelse\n  export\
+                  \ DOCKER_TAGS=\"<+codebase.shortCommitSha>\"\nfi\necho \"DOCKER_TAGS=$DOCKER_TAGS\"\
+                  \n"
+                outputVariables:
+                - name: DOCKER_TAGS
+                  type: String
+                  value: DOCKER_TAGS
+                image: node:<+pipeline.variables.NODE_VERSION>
+                connectorRef: account.harnessImage
+          - step:
+              type: BuildAndPushDockerRegistry
+              name: Build and push Docker image
+              identifier: build_and_push_docker_image
+              spec:
+                connectorRef: <+input>
+                repo: ghcr.io/ank1064/github-actions-demo
+                tags:
+                - <+codebase.shortCommitSha>
+                dockerfile: Dockerfile
+                context: .
+                caching: true
+              when:
+                stageStatus: Success
+                condition: <+codebase.build.type> != "PR"
+        type: CI
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: Linux
+      timeout: 30m
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: MarkAsFailure
+  variables:
+  - name: NODE_VERSION
+    type: String
+    value: <+input>
+  description: 'Migrated pipeline: Prod CI. Review connectors, secrets, and runtime
+    inputs before production use.'

@@ -1,0 +1,77 @@
+template:
+  name: GHA Prod CI GapFilled REMOTE 053992 - gaps filled
+  identifier: gha_prod_ci_gapfilled_remote_053992
+  versionLabel: v1
+  type: Pipeline
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: Gap-filled Harness Pipeline for GitHub Actions migration; cloned from
+    gha_prod_ci_pipeline
+  tags:
+    gha_prod: 'true'
+    role: equivalent
+    ci: 'true'
+  spec:
+    properties:
+      ci:
+        codebase:
+          connectorRef: <+input>
+          repoName: <+input>
+          build: <+input>
+    stages:
+    - stage:
+        name: CI
+        identifier: ci
+        type: CI
+        spec:
+          cloneCodebase: true
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: <+input>
+              namespace: <+input>
+              os: Linux
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Install Dependencies
+                identifier: install_deps
+                spec:
+                  connectorRef: account.harnessImage
+                  image: node:20-bookworm
+                  shell: Sh
+                  command: npm install
+            - step:
+                type: Run
+                name: Lint
+                identifier: lint
+                spec:
+                  connectorRef: account.harnessImage
+                  image: node:20-bookworm
+                  shell: Sh
+                  command: npm run lint
+            - step:
+                type: Run
+                name: Unit Tests
+                identifier: unit_tests
+                spec:
+                  connectorRef: account.harnessImage
+                  image: node:20-bookworm
+                  shell: Sh
+                  command: npm test -- --coverage
+            - step:
+                type: Run
+                name: Build Application
+                identifier: build_app
+                spec:
+                  connectorRef: account.harnessImage
+                  image: node:20-bookworm
+                  shell: Sh
+                  command: npm run build
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure

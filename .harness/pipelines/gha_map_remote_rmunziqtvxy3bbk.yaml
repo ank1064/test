@@ -1,0 +1,11 @@
+pipeline:
+  name: GHA Map remote rmunziqtvxy3bbk
+  identifier: gha_map_remote_rmunziqtvxy3bbk
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: ''
+  tags: {}
+  template:
+    templateRef: ci_full_pipeline_template_filled_MONO_NXAFFECTED
+    versionLabel: v1
+    templateInputs: {}

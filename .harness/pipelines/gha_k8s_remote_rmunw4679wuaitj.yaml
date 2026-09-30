@@ -1,0 +1,123 @@
+pipeline:
+  name: Prod_CI
+  identifier: gha_k8s_remote_rmunw4679wuaitj
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        repoName: ank1064/github-actions-demo
+        build: <+input>
+  stages:
+  - stage:
+      name: Build Test Scan Publish
+      identifier: ci
+      type: CI
+      spec:
+        cloneCodebase: true
+        execution:
+          steps:
+          - step:
+              type: Run
+              name: Install Dependencies
+              identifier: install_dependencies
+              spec:
+                image: node:20
+                shell: Bash
+                command: npm install
+                connectorRef: <+input>
+          - step:
+              type: Run
+              name: Lint
+              identifier: lint
+              spec:
+                image: node:20
+                shell: Bash
+                command: npm run lint
+                connectorRef: <+input>
+          - step:
+              type: Run
+              name: Unit Tests
+              identifier: unit_tests
+              spec:
+                image: node:20
+                shell: Bash
+                command: npm test -- --coverage
+                connectorRef: <+input>
+          - step:
+              type: Run
+              name: Build Application
+              identifier: build_application
+              spec:
+                image: node:20
+                shell: Bash
+                command: npm run build
+                connectorRef: <+input>
+          - step:
+              type: AquaTrivy
+              name: Filesystem Vulnerability Scan
+              identifier: filesystem_vulnerability_scan
+              spec:
+                mode: orchestration
+                config: default
+                target:
+                  type: repository
+                  detection: auto
+                  name: <+input>
+                  variant: <+input>
+                advanced:
+                  log:
+                    level: info
+                  fail_on_severity: high
+                  args:
+                    cli: --ignore-unfixed
+                privileged: true
+          - step:
+              type: Gitleaks
+              name: Secret Scan
+              identifier: secret_scan
+              spec:
+                mode: orchestration
+                config: default
+                target:
+                  type: repository
+                  detection: auto
+                  name: <+input>
+                  variant: <+input>
+                advanced:
+                  log:
+                    level: info
+                privileged: true
+          - step:
+              type: BuildAndPushDockerRegistry
+              name: Build and Push Docker Image
+              identifier: build_and_push_docker_image
+              spec:
+                connectorRef: <+input>
+                repo: ghcr.io/ank1064/github-actions-demo
+                tags:
+                - <+codebase.shortCommitSha>
+                - latest
+                dockerfile: Dockerfile
+                context: .
+                caching: true
+              when:
+                stageStatus: Success
+                condition: <+codebase.build.type> != "PR"
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: Linux
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: MarkAsFailure
+  description: 'Migrated pipeline: Prod_CI. Review connectors, secrets, and runtime
+    inputs before production use.'

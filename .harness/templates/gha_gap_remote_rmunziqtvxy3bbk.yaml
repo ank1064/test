@@ -1,0 +1,105 @@
+template:
+  name: CI Full Pipeline Template - gaps filled
+  identifier: gha_gap_remote_rmunziqtvxy3bbk
+  versionLabel: v1
+  type: Pipeline
+  description: Gap-filled Harness pipeline for GitHub Actions migration; cloned from
+    ci_full_pipeline_template_filled_MONO_NXAFFECTED
+  tags:
+    ci: ''
+    pipeline: ''
+    monorepo: ''
+  spec:
+    stages:
+    - stage:
+        name: Build
+        identifier: build
+        type: CI
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Nx Affected
+                identifier: nx_affected
+                spec:
+                  connectorRef: <+input>
+                  image: <+input>
+                  shell: Sh
+                  command: 'export NX_CLOUD_ACCESS_TOKEN="<+secrets.getValue("nx_cloud_token")>"
+
+                    npm ci
+
+                    npx nx affected -t lint,test,build --base=main
+
+                    '
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback
+    - stage:
+        name: Sharded Tests
+        identifier: sharded_tests
+        type: CI
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Pre-Test Echo
+                identifier: pre_test_echo
+                spec:
+                  shell: Sh
+                  command: echo job-<+repeat.item>-step-1
+            - step:
+                type: Run
+                name: Run Sharded Tests
+                identifier: run_sharded_tests
+                spec:
+                  shell: Sh
+                  command: npm test -- --shard=<+repeat.item>/12
+            - step:
+                type: Run
+                name: Post-Test Echo
+                identifier: post_test_echo
+                spec:
+                  shell: Sh
+                  command: echo 'padding-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+        strategy:
+          repeat:
+            items:
+            - '1'
+            - '2'
+            - '3'
+            - '4'
+            - '5'
+            - '6'
+            - '7'
+            - '8'
+            - '9'
+            - '10'
+            - '11'
+            - '12'
+            maxConcurrency: 12
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: StageRollback

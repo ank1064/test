@@ -1,0 +1,26 @@
+pipeline:
+  name: GHA Map gha_map_remote rmunzeple0v0yn1
+  identifier: gha_map_remote_rmunzeple0v0yn1
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: ''
+  tags: {}
+  template:
+    templateRef: gha_prod_ci_gapfilled_inline_553971
+    versionLabel: v1
+    templateInputs:
+      properties:
+        ci:
+          codebase:
+            connectorRef: <+input>
+            repoName: <+input>
+            build: <+input>
+      stages:
+      - stage:
+          identifier: ci
+          type: CI
+          spec:
+            infrastructure:
+              spec:
+                connectorRef: <+input>
+                namespace: <+input>

@@ -1,0 +1,245 @@
+pipeline:
+  name: CI
+  identifier: gha_k8s_remote_rmv9gpe4qlvh59z
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: Converted from GitHub Actions workflow ci.yml (setup, validate, greet,
+    summary)
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        repoName: ank1064/github-actions-demo
+        build: <+input>
+  variables:
+  - name: repository
+    type: String
+    description: GitHub repository slug (github.repository)
+    value: ank1064/github-actions-demo
+  - name: environment
+    type: String
+    description: Target environment label passed to the setup workflow
+    value: production
+  - name: strict
+    type: String
+    description: Fail validation if required files are missing
+    value: 'true'
+  stages:
+  - stage:
+      name: setup
+      identifier: setup
+      description: Reusable Setup workflow (checkout, print-env action, environment
+        label)
+      type: CI
+      spec:
+        cloneCodebase: true
+        execution:
+          steps:
+          - step:
+              type: Run
+              name: Print environment info
+              identifier: env
+              spec:
+                shell: Bash
+                command: 'repository="<+pipeline.variables.repository>"
+
+                  branch="<+codebase.branch>"
+
+                  echo "Repository: ${repository}"
+
+                  echo "Branch: ${branch}"
+
+                  echo "Commit: <+codebase.commitSha>"
+
+                  echo "Actor: <+pipeline.triggeredBy.name>"
+
+                  export repo_name="${repository}"
+
+                  export branch="${branch}"
+
+                  '
+                outputVariables:
+                - name: repo_name
+                  type: String
+                  value: repo_name
+                - name: branch
+                  type: String
+                  value: branch
+                connectorRef: account.harnessImage
+                image: maven:3.9-eclipse-temurin-17
+          - step:
+              type: Run
+              name: Set environment label
+              identifier: label
+              spec:
+                shell: Bash
+                command: 'echo "Target environment: <+pipeline.variables.environment>"
+
+                  export environment="<+pipeline.variables.environment>"
+
+                  '
+                outputVariables:
+                - name: environment
+                  type: String
+                  value: environment
+                connectorRef: account.harnessImage
+                image: maven:3.9-eclipse-temurin-17
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: Linux
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: MarkAsFailure
+  - parallel:
+    - stage:
+        name: validate
+        identifier: validate
+        description: Reusable Validate workflow (checkout, validate action)
+        type: CI
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Run validation
+                identifier: check
+                spec:
+                  shell: Bash
+                  command: "echo \"Running validation (strict=<+pipeline.variables.strict>)...\"\
+                    \n\nif [ -f README.md ]; then\n  echo \"README.md found\"\nelse\n\
+                    \  echo \"README.md missing\"\n  if [ \"<+pipeline.variables.strict>\"\
+                    \ = \"true\" ]; then\n    exit 1\n  fi\nfi\n\nif [ -d .github/workflows\
+                    \ ]; then\n  echo \"Workflows directory found\"\nelse\n  echo\
+                    \ \"Workflows directory missing\"\n  if [ \"<+pipeline.variables.strict>\"\
+                    \ = \"true\" ]; then\n    exit 1\n  fi\nfi\n\necho \"Validation\
+                    \ passed!\"\nexport status=passed\n"
+                  outputVariables:
+                  - name: status
+                    type: String
+                    value: status
+                  connectorRef: account.harnessImage
+                  image: maven:3.9-eclipse-temurin-17
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: <+input>
+              namespace: <+input>
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+    - stage:
+        name: greet
+        identifier: greet
+        description: Checkout, run local Greet node action, show greeting output
+        type: CI
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+            - step:
+                type: Run
+                name: Greet from custom action
+                identifier: greet
+                spec:
+                  connectorRef: <+input>
+                  image: node:24
+                  shell: Sh
+                  envVariables:
+                    INPUT_NAME: <+pipeline.stages.setup.spec.execution.steps.env.output.outputVariables.repo_name>
+                    GITHUB_OUTPUT: /harness/greet_output.txt
+                  command: ': > "$GITHUB_OUTPUT"
+
+                    node .github/actions/greet/index.js
+
+                    message="$(sed -n ''s/^message=//p'' "$GITHUB_OUTPUT" | tail -n
+                    1)"
+
+                    export message
+
+                    '
+                  outputVariables:
+                  - name: message
+                    type: String
+                    value: message
+            - step:
+                type: Run
+                name: Show greeting output
+                identifier: show_greeting
+                spec:
+                  shell: Bash
+                  command: echo "<+execution.steps.greet.output.outputVariables.message>"
+                  connectorRef: account.harnessImage
+                  image: maven:3.9-eclipse-temurin-17
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: <+input>
+              namespace: <+input>
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+        failureStrategies:
+        - onFailure:
+            errors:
+            - AllErrors
+            action:
+              type: MarkAsFailure
+  - stage:
+      name: summary
+      identifier: summary
+      description: Pipeline summary, runs regardless of upstream status (always())
+      type: CI
+      when:
+        pipelineStatus: All
+      spec:
+        cloneCodebase: false
+        execution:
+          steps:
+          - step:
+              type: Run
+              name: Pipeline summary
+              identifier: pipeline_summary
+              spec:
+                shell: Bash
+                command: 'echo "=== CI Pipeline Summary ==="
+
+                  echo "Repository : <+pipeline.stages.setup.spec.execution.steps.env.output.outputVariables.repo_name>"
+
+                  echo "Branch     : <+pipeline.stages.setup.spec.execution.steps.env.output.outputVariables.branch>"
+
+                  echo "Environment: <+pipeline.stages.setup.spec.execution.steps.label.output.outputVariables.environment>"
+
+                  echo "Validation : <+pipeline.stages.validate.spec.execution.steps.check.output.outputVariables.status>"
+
+                  echo "==========================="'
+                connectorRef: account.harnessImage
+                image: maven:3.9-eclipse-temurin-17
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: Linux
+      failureStrategies:
+      - onFailure:
+          errors:
+          - AllErrors
+          action:
+            type: MarkAsFailure

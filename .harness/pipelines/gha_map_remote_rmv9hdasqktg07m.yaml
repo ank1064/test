@@ -1,0 +1,78 @@
+pipeline:
+  name: GHA Map gha_map_remote rmv9hdasqktg07m
+  identifier: gha_map_remote_rmv9hdasqktg07m
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: ''
+  tags: {}
+  template:
+    templateRef: account.gha_gap_remote_rmv9h5r2bj7mu4v
+    versionLabel: v1
+    gitBranch: main
+    templateInputs:
+      variables:
+      - name: imageRegistry
+        type: String
+        value: <+input>
+      - name: helmChart
+        type: String
+        value: <+input>
+      - name: fhirProfile
+        type: String
+        value: <+input>
+      - name: dastTarget
+        type: String
+        value: <+input>
+      - name: sonarProject
+        type: String
+        value: <+input>
+      - name: integrationHealthCheckUrl
+        type: String
+        value: <+input>
+      - name: clinicalUatHealthCheckUrl
+        type: String
+        value: <+input>
+      - name: productionHealthCheckUrl
+        type: String
+        value: <+input>
+      stages:
+      - stage:
+          identifier: DeployIntegration
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: DeployClinicalUAT
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: ProductionBlueGreenDeployment
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>
+      - stage:
+          identifier: DeployAuditCanary
+          type: Deployment
+          spec:
+            service:
+              serviceRef: <+input>
+            environment:
+              environmentRef: <+input>
+              infrastructureDefinitions:
+              - identifier: <+input>

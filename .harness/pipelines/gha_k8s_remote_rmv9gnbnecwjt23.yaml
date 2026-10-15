@@ -1,0 +1,43 @@
+pipeline:
+  name: mono-ci
+  identifier: gha_k8s_remote_rmv9gnbnecwjt23
+  projectIdentifier: CSETest1
+  orgIdentifier: nglabs
+  description: Converted from GitHub Actions workflow mono-ci. Runs 12 independent test shards in parallel.
+  properties:
+    ci:
+      codebase:
+        connectorRef: <+input>
+        repoName: github-actions-demo
+        build: <+input>
+  stages:
+  - stage:
+      name: test shards
+      identifier: test_shards
+      type: CI
+      strategy:
+        matrix:
+          shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+          maxConcurrency: 12
+      spec:
+        cloneCodebase: true
+        execution:
+          steps:
+          - step:
+              type: Run
+              name: npm test shard
+              identifier: npm_test_shard
+              spec:
+                shell: Bash
+                connectorRef: account.harnessImage
+                image: node:20
+                command: |
+                  npm ci
+                  npm test -- --shard=<+matrix.shard>/12
+        infrastructure:
+          type: KubernetesDirect
+          spec:
+            connectorRef: <+input>
+            namespace: <+input>
+            automountServiceAccountToken: true
+            os: Linux
